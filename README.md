@@ -13,11 +13,11 @@ This repository is for the robot car development, including main program, sensor
 
 # Test List
 - [ ] camera image reading in python with pybind11
-- [ ] camera calibration
+- [x] camera calibration
 - [ ] LiDAR data reading in python
+- [ ] GPS data reading
 - [ ] CAN bus test with robot car
 - [ ] auto install scripts on ubuntu16.04/18.04
 
 # TODO List
-- [ ] GPS data reading
 - [ ] IMU data reading
