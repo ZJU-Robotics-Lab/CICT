@@ -9,13 +9,14 @@ This repository is for the robot car development, including main program, sensor
 
 # Features
 * Camera image reading in python with pybind11
-```
+```bash
 bash camera/build.sh
 python camera/run.py
 ```
 * Camera calibration
-```
-python scripts/calibration.py --dir imgs/ --type png --test_name left-0001.png
+```bash
+cd scripts
+python calibration.py --dir imgs --test left-0001.png
 ```
 
 

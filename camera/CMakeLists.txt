@@ -27,7 +27,7 @@ include_directories(
 )
 
 find_package(pybind11 REQUIRED)
-pybind11_add_module(${PROJ_NAME} src/main.cpp src/mat_warper.cpp src/mat_warper.h src/util/cam_utils.cc)
+pybind11_add_module(${PROJ_NAME} src/main.cpp src/util/mat_warper.cpp src/util/mat_warper.h src/util/cam_utils.cc)
 
 target_link_libraries(${PROJ_NAME} PRIVATE pybind11::module mynteye_depth ${OpenCV_LIBS})
 
