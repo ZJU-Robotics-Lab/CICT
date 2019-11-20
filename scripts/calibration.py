@@ -5,9 +5,10 @@ import argparse
 import numpy as np
 
 parser = argparse.ArgumentParser()
+parser.add_argument('--dir', type=str, default='.', help="image files dir")
 parser.add_argument('--type', type=str, default='png', help="image file type 'png' or 'jpg'")
 parser.add_argument('--test', type=bool, default=True, help='if test calibration')
-parser.add_argument('--test_name', type=str, default='left-0009.png', help='test image name')
+parser.add_argument('--test_name', type=str, default='left-0001.png', help='test image name')
 opt = parser.parse_args()
 
 # termination criteria
@@ -21,7 +22,7 @@ objp[:,:2] = np.mgrid[0:7,0:6].T.reshape(-1,2)
 objpoints = [] # 3d point in real world space
 imgpoints = [] # 2d points in image plane.
 
-images = glob.glob('*.'+opt.type)
+images = glob.glob(opt.dir+'/*.'+opt.type)
 assert len(images) > 0
 print('Find images', len(images))
 
@@ -65,8 +66,9 @@ print("total error:", mean_error/len(objpoints))
 
 ######################### test ################################
 if opt.test:
-    if os.path.exists(opt.test_name):
-        img = cv2.imread(opt.test_name)
+    file_path = opt.dir + '/' + opt.test_name
+    if os.path.exists(file_path):
+        img = cv2.imread(file_path)
         assert type(img) != type(None)
 
         h,  w = img.shape[:2]
@@ -79,11 +81,11 @@ if opt.test:
         # crop the image
         x,y,w,h = roi
         dst = dst[y:y+h, x:x+w]
-        cv2.imwrite('calibresult.png',dst)
+        #cv2.imwrite('calibresult.png',dst)
     
         cv2.imshow('origin',img)
         cv2.imshow('calibration',dst)
         cv2.waitKey(5000)
         cv2.destroyAllWindows()
     else:
-        print(opt.test_name, 'not exist !')
+        print(file_path, 'not exist !')
