@@ -21,10 +21,10 @@ python calibration.py --dir imgs --test left-0001.png
 
 
 # Test List
-- [ ] LiDAR data reading in python
+- [x] LiDAR data reading in python
 - [ ] GPS data reading
-- [ ] CAN bus test with robot car
-- [ ] auto install scripts on ubuntu16.04/18.04
+- [x] CAN-USB test with python-can
+- [x] auto install scripts on ubuntu16.04/18.04
 
 # TODO List
 - [ ] IMU data reading

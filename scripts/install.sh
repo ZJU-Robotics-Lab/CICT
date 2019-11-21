@@ -11,10 +11,11 @@ select opt in $OPTIONS; do
 		sudo apt-get install libopencv-dev python-opencv
 
 	elif [ "$opt" = "pybind" ]; then
-		if [ ! -d "3rdpart" ]; then
-			mkdir 3rdpart
+		if [ ! -d "3rdparty" ]; then
+			mkdir 3rdparty
 		fi
-		cd 3rdpart
+		cd 3rdparty
+		pip install pytest
 		git clone https://github.com/pybind/pybind11.git
 		cd pybind11
 		mkdir build
@@ -25,10 +26,10 @@ select opt in $OPTIONS; do
 		cd ../../
 
 	elif [ "$opt" = "camera" ]; then
-		if [ ! -d "3rdpart" ]; then
-			mkdir 3rdpart
+		if [ ! -d "3rdparty" ]; then
+			mkdir 3rdparty
 		fi
-		cd 3rdpart
+		cd 3rdparty
 		git clone https://github.com/slightech/MYNT-EYE-D-SDK.git
 		cd MYNT-EYE-D-SDK
 		make init
