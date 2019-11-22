@@ -8,7 +8,7 @@ select opt in $OPTIONS; do
 		sudo apt-get install cmake
 
 	elif [ "$opt" = "opencv" ]; then
-		sudo apt-get install libopencv-dev python-opencv
+		sudo apt-get install libopencv-dev python3-opencv
 
 	elif [ "$opt" = "pybind" ]; then
 		if [ ! -d "3rdparty" ]; then
@@ -23,7 +23,7 @@ select opt in $OPTIONS; do
 		cmake ..
 		make -j16
 		sudo make install
-		cd ../../
+		cd ../../../
 
 	elif [ "$opt" = "camera" ]; then
 		if [ ! -d "3rdparty" ]; then
