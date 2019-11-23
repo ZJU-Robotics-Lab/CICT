@@ -14,6 +14,18 @@ from numpy import linalg
 import copy
 import matplotlib.pyplot as plt
 
+MAX_SHOW_FILE_NUM = 100
+
+# 0: left and right (-5:5); 1: near and further (10:-30); 2: up and down (-1:3)
+# 0: left < right
+# 1: near < further
+# 2: up < down
+# x_thresh = [-5, 5]
+# y_thresh = [-30, 10]
+# z_thresh = [-1, 3]
+x_thresh = [-1.1, 2.1]
+y_thresh = [1.5, 4.5]
+z_thresh = [-0.4, 2.1]
 
 class VtkPointCloud:
     def __init__(self, zMin=-1.0, zMax=1.0, maxNumPoints=1e6):
@@ -52,7 +64,7 @@ class VtkPointCloud:
         self.vtkPolyData.GetCellData().SetScalars(self.vtkDepth)
         self.vtkPolyData.GetCellData().SetActiveScalars('DepthArray')
         point_mapper = vtk.vtkPolyDataMapper()
-        point_mapper.SetInput(self.vtkPolyData)
+        point_mapper.SetInputDataObject(self.vtkPolyData)
         point_mapper.SetColorModeToDefault()
         point_mapper.SetScalarRange(zMin, zMax)
         self.point_vtkActor = vtk.vtkActor()
@@ -61,7 +73,7 @@ class VtkPointCloud:
     def init_planes(self):
         self.vtkPlanes = vtk.vtkPlaneSource()
         plane_mapper = vtk.vtkPolyDataMapper()
-        plane_mapper.SetInput(self.vtkPlanes.GetOutput())
+        plane_mapper.SetInputDataObject(self.vtkPlanes.GetOutput())
         self.plane_vtkActor = vtk.vtkActor()
         self.plane_vtkActor.SetMapper(plane_mapper)
 
@@ -141,29 +153,42 @@ def vtk_visualize(point_list, view_thresh):
     render_window_interactor.Start()
 
 
-def load_data(point_cloud_path):
-    # 0: left and right (-5:5); 1: near and further (10:-30); 2: up and down (-1:3)
-    # 0: left < right
-    # 1: near < further
-    # 2: up < down
-    # x_thresh = [-5, 5]
-    # y_thresh = [-30, 10]
-    # z_thresh = [-1, 3]
+def load_dir_data(point_cloud_path):
 
-    # x_thresh = [-1.1, 1.8]
-    # y_thresh = [-2.5, -1.5]
-    # z_thresh = [-0.4, 2.1]
-
-    x_thresh = [-1.1, 2.1]
-    y_thresh = [1.5, 4.5]
-    z_thresh = [-0.4, 2.1]
-
-    file_path = os.path.join(point_cloud_path)
-    # file_path = os.path.join(point_cloud_path, 'frame('+str(img_num)+').csv')
+    files = os.listdir(point_cloud_path)
     point_list = []
     all_point_list = []
-    with open(file_path) as f:
-        f.readline()
+
+    file_num = len(files)
+    if file_num > MAX_SHOW_FILE_NUM:
+        file_num = MAX_SHOW_FILE_NUM
+
+    for i in range(file_num):
+        with open(point_cloud_path + "\\" + files[i]) as f:
+            while True:
+                data = f.readline()
+                if not data:
+                    break
+                
+                point_coords = np.float64(data.strip().split(',')[:3])
+                # print(point_coords)
+                all_point_list.append(point_coords)
+                if (point_coords[0] > x_thresh[0]) and (point_coords[0] < x_thresh[1]) and \
+                        (point_coords[1] > y_thresh[0]) and (point_coords[1] < y_thresh[1]) and \
+                        (point_coords[2] > z_thresh[0]) and (point_coords[2] < z_thresh[1]):
+                    point_list.append(point_coords)
+                f.readline()
+    point_list = np.array(point_list)
+    all_point_list = np.array(all_point_list)
+    thresh = [x_thresh, y_thresh, z_thresh]
+    return point_list, all_point_list, thresh
+
+def load_file_data(point_cloud_path):
+
+    point_list = []
+    all_point_list = []
+
+    with open(point_cloud_path) as f:
         while True:
             data = f.readline()
             if not data:
@@ -174,6 +199,7 @@ def load_data(point_cloud_path):
                     (point_coords[1] > y_thresh[0]) and (point_coords[1] < y_thresh[1]) and \
                     (point_coords[2] > z_thresh[0]) and (point_coords[2] < z_thresh[1]):
                 point_list.append(point_coords)
+            f.readline()
     point_list = np.array(point_list)
     all_point_list = np.array(all_point_list)
     thresh = [x_thresh, y_thresh, z_thresh]
@@ -181,12 +207,16 @@ def load_data(point_cloud_path):
 
 
 def main(point_cloud_path):
-    data, all_data, view_thresh = load_data(point_cloud_path)
+    if os.path.isdir(point_cloud_path):
+        data, all_data, view_thresh = load_dir_data(point_cloud_path)
+    else:
+        data, all_data, view_thresh = load_file_data(point_cloud_path)
+    # print(all_data)
     vtk_visualize(all_data, view_thresh)
 
 
 if __name__ == '__main__':
     if len(sys.argv) < 2:
-        print __doc__
+        print(__doc__)
         sys.exit(2)
     main(sys.argv[1])
