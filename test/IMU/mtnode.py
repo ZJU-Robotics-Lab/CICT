@@ -3,6 +3,7 @@
 import mtdevice
 import mtdef
 
+import math
 import time
 import datetime
 
@@ -41,9 +42,9 @@ class XSensDriver(object):
         # oq400fe = orientation at 400hz
         # pl400fe = position (lat long) 400hz
         output_config = mtdevice.get_output_config('mf100fe,wr2000de,aa2000de,oq400de,pl400fe')
-        print "Changing output configuration",
+        print("Changing output configuration",)
         self.mt.SetOutputConfiguration(output_config)
-        print "System is Ok, Ready to Record."
+        print("System is Ok, Ready to Record.")
 
 
     def spin(self):
@@ -72,18 +73,20 @@ class XSensDriver(object):
 
         def convert_quat(q, source, dest='ENU'):
             """Convert a quaternion between ENU, NED, and NWU."""
-            def q_mult((w0, x0, y0, z0), (w1, x1, y1, z1)):
+            def q_mult(param1, param2):
+                (w0, x0, y0, z0) = param1
+                (w1, x1, y1, z1) = param2
                 """Quaternion multiplication."""
                 w = w0*w1 - x0*x1 - y0*y1 - z0*z1
                 x = w0*x1 + x0*w1 + y0*z1 - z0*y1
                 y = w0*y1 - x0*z1 + y0*w1 + z0*x1
                 z = w0*z1 + x0*y1 - y0*x1 + z0*w1
                 return (w, x, y, z)
-            q_enu_ned = (0, 1./sqrt(2), 1./sqrt(2), 0)
-            q_enu_nwu = (1./sqrt(2), 0, 0, -1./sqrt(2))
+            q_enu_ned = (0, 1./math.sqrt(2), 1./math.sqrt(2), 0)
+            q_enu_nwu = (1./math.sqrt(2), 0, 0, -1./math.sqrt(2))
             q_ned_nwu = (0, -1, 0, 0)
-            q_ned_enu = (0, -1./sqrt(2), -1./sqrt(2), 0)
-            q_nwu_enu = (1./sqrt(2), 0, 0, 1./sqrt(2))
+            q_ned_enu = (0, -1./math.sqrt(2), -1./math.sqrt(2), 0)
+            q_nwu_enu = (1./math.sqrt(2), 0, 0, 1./math.sqrt(2))
             q_nwu_ned = (0, 1, 0, 0)
             if source == 'ENU':
                 if dest == 'ENU':
@@ -224,6 +227,7 @@ class XSensDriver(object):
                 y, m, d, hr, mi, s, ns, f = o['Year'], o['Month'], o['Day'], o['Hour'], o['Minute'], o['Second'], o['ns'], o['Flags']
                 if f & 0x4:
                     secs = time.mktime((y, m, d, hr, mi, s, 0, 0, 0))
+                    print('UTC time (s):', secs)
                 print('UTC time' + str(ns))
             except KeyError:
                 pass
@@ -340,7 +344,7 @@ class XSensDriver(object):
             try:
                 locals()[find_handler_name(n)](o)
             except KeyError:
-                rospy.logwarn("Unknown MTi data packet: '%s', ignoring." % n)
+                print("Unknown MTi data packet: '%s', ignoring." % n)
 
 
 def main():

@@ -1,4 +1,4 @@
-From: https://github.com/rpng/xsens_standalone
+Fork from: https://github.com/rpng/xsens_standalone, and fix some bugs
 
 # xsens_standalone
 
