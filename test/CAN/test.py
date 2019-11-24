@@ -1,25 +1,9 @@
-#!/usr/bin/env python
-
-"""
-This example sends every second a messages over the serial interface and also
-receives incoming messages.
-python3 -m examples.serial_com
-Expects two serial ports (/dev/ttyS10 and /dev/ttyS11) connected to each other:
-    Linux:
-    To connect two ports use socat.
-    sudo apt-get install socat
-    sudo socat PTY,link=/dev/ttyS10 PTY,link=/dev/ttyS11
-    Windows:
-    This example was not tested on Windows. To create and connect virtual
-    ports on Windows, the following software can be used:
-        com0com: http://com0com.sourceforge.net/
-"""
-
 import time
 import threading
 
 import can
 
+CHANNEL = 'COM5'
 
 def send_cyclic(bus, msg, stop_event):
     """The loop for sending."""
@@ -29,7 +13,7 @@ def send_cyclic(bus, msg, stop_event):
         msg.timestamp = time.time() - start_time
         bus.send(msg)
         print(f"tx: {msg}")
-        time.sleep(1)
+        time.sleep(0.1)
     print("Stopped sending messages")
 
 
@@ -45,12 +29,18 @@ def receive(bus, stop_event):
 
 def main():
     """Controles the sender and receiver."""
-    with can.interface.Bus(bustype="serial", channel="/dev/ttyS10") as server:
-        with can.interface.Bus(bustype="serial", channel="/dev/ttyS11") as client:
+    with can.interface.Bus(bustype="serial", channel=CHANNEL) as server:
+        #with can.interface.Bus(bustype="serial", channel="COM5") as client:
 
             tx_msg = can.Message(
-                arbitration_id=0x01,
-                data=[0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88],
+                arbitration_id=0x203,
+                data=[0x03, # 03 forward 05 backward 09 break
+                      0x00, 0x80, # speed low-high 0~2700 rpm
+                      0x80, # acc 0.2~25.5s
+                      0x00, # none
+                      0x00, 0x00, # ratation 580-1220 low-high
+                      0x00 # none
+                      ],
             )
 
             # Thread for sending and receiving messages
@@ -58,7 +48,7 @@ def main():
             t_send_cyclic = threading.Thread(
                 target=send_cyclic, args=(server, tx_msg, stop_event)
             )
-            t_receive = threading.Thread(target=receive, args=(client, stop_event))
+            t_receive = threading.Thread(target=receive, args=(server, stop_event))
             t_receive.start()
             t_send_cyclic.start()
 
