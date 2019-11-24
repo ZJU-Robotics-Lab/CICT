@@ -1,31 +1,10 @@
-#!/usr/bin/env python
-"""
-    Visualize Velodyne VLP-16 Point Cloud
-    usage:
-        ./visualize_point_cloud.py <file_path>
-"""
-import numpy as np
-import os
-import sys
 import vtk
-from numpy import random
-import cv2
-from numpy import linalg
-import copy
-import matplotlib.pyplot as plt
+import numpy as np
 
-MAX_SHOW_FILE_NUM = 100
+x_thresh = [-1.1, 2.1]*10
+y_thresh = [1.5, 4.5]*10
+z_thresh = [-0.4, 2.1]*10
 
-# 0: left and right (-5:5); 1: near and further (10:-30); 2: up and down (-1:3)
-# 0: left < right
-# 1: near < further
-# 2: up < down
-# x_thresh = [-5, 5]
-# y_thresh = [-30, 10]
-# z_thresh = [-1, 3]
-x_thresh = [-1.1, 2.1]
-y_thresh = [1.5, 4.5]
-z_thresh = [-0.4, 2.1]
 
 class VtkPointCloud:
     def __init__(self, zMin=-1.0, zMax=1.0, maxNumPoints=1e6):
@@ -39,7 +18,7 @@ class VtkPointCloud:
             self.vtkCells.InsertNextCell(1)
             self.vtkCells.InsertCellPoint(pointId)
         else:
-            r = random.randint(0, self.maxNumPoints)
+            r = np.random.randint(0, self.maxNumPoints)
             self.vtkPoints.SetPoint(r, point[:])
         self.vtkCells.Modified()
         self.vtkPoints.Modified()
@@ -76,29 +55,10 @@ class VtkPointCloud:
         plane_mapper.SetInputDataObject(self.vtkPlanes.GetOutput())
         self.plane_vtkActor = vtk.vtkActor()
         self.plane_vtkActor.SetMapper(plane_mapper)
-
-
-def project2zplane(r_mtx, t_vec, i_mtx, z_height, img_pos):
-    pro_mtx = np.dot(i_mtx, np.vstack((r_mtx.T, t_vec.T)).T)
-    a = copy.deepcopy(pro_mtx[:, 0:3])
-    b = np.zeros((3, 1))
-    a[0, 2] = -img_pos[0]
-    b[0, 0] = -(pro_mtx[0, 2] * z_height + pro_mtx[0, 3])
-    a[1, 2] = -img_pos[1]
-    b[1, 0] = -(pro_mtx[1, 2] * z_height + pro_mtx[1, 3])
-    a[2, 2] = -1.0
-    b[2, 0] = -(pro_mtx[2, 2] * z_height + pro_mtx[2, 3])
-    result = linalg.solve(a, b)
-    x_3d = result[0]
-    y_3d = result[1]
-    return x_3d, y_3d
-
-
-def vtk_visualize(point_list, view_thresh):
+        
+def vtk_visualize(point_list):
+    global x_thresh, y_thresh, z_thresh
     point_cloud = VtkPointCloud()
-    x_thresh = view_thresh[0]
-    y_thresh = view_thresh[1]
-    z_thresh = view_thresh[2]
 
     for i in range(len(point_list)):
         point_coords = point_list[i]
@@ -151,72 +111,3 @@ def vtk_visualize(point_list, view_thresh):
     widget.InteractiveOn()
     render_window.Render()
     render_window_interactor.Start()
-
-
-def load_dir_data(point_cloud_path):
-
-    files = os.listdir(point_cloud_path)
-    point_list = []
-    all_point_list = []
-
-    file_num = len(files)
-    if file_num > MAX_SHOW_FILE_NUM:
-        file_num = MAX_SHOW_FILE_NUM
-
-    for i in range(file_num):
-        with open(point_cloud_path + "\\" + files[i]) as f:
-            while True:
-                data = f.readline()
-                if not data:
-                    break
-                
-                point_coords = np.float64(data.strip().split(',')[:3])
-                # print(point_coords)
-                all_point_list.append(point_coords)
-                if (point_coords[0] > x_thresh[0]) and (point_coords[0] < x_thresh[1]) and \
-                        (point_coords[1] > y_thresh[0]) and (point_coords[1] < y_thresh[1]) and \
-                        (point_coords[2] > z_thresh[0]) and (point_coords[2] < z_thresh[1]):
-                    point_list.append(point_coords)
-                f.readline()
-    point_list = np.array(point_list)
-    all_point_list = np.array(all_point_list)
-    thresh = [x_thresh, y_thresh, z_thresh]
-    return point_list, all_point_list, thresh
-
-def load_file_data(point_cloud_path):
-
-    point_list = []
-    all_point_list = []
-
-    with open(point_cloud_path) as f:
-        while True:
-            data = f.readline()
-            if not data:
-                break
-            point_coords = np.float64(data.strip().split(',')[:3])
-            all_point_list.append(point_coords)
-            if (point_coords[0] > x_thresh[0]) and (point_coords[0] < x_thresh[1]) and \
-                    (point_coords[1] > y_thresh[0]) and (point_coords[1] < y_thresh[1]) and \
-                    (point_coords[2] > z_thresh[0]) and (point_coords[2] < z_thresh[1]):
-                point_list.append(point_coords)
-            f.readline()
-    point_list = np.array(point_list)
-    all_point_list = np.array(all_point_list)
-    thresh = [x_thresh, y_thresh, z_thresh]
-    return point_list, all_point_list, thresh
-
-
-def main(point_cloud_path):
-    if os.path.isdir(point_cloud_path):
-        data, all_data, view_thresh = load_dir_data(point_cloud_path)
-    else:
-        data, all_data, view_thresh = load_file_data(point_cloud_path)
-    # print(all_data)
-    vtk_visualize(all_data, view_thresh)
-
-
-if __name__ == '__main__':
-    if len(sys.argv) < 2:
-        print(__doc__)
-        sys.exit(2)
-    main(sys.argv[1])

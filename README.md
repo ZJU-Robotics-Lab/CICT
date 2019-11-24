@@ -29,4 +29,4 @@ python calibration.py --dir imgs --test left-0001.png
 - [x] LiDAR data reading in python
 - [ ] GPS data reading
 - [ ] CAN-USB test with python-can
-- [ ] IMU data reading
+- [x] IMU data reading
