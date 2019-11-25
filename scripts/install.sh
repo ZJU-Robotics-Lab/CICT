@@ -8,7 +8,7 @@ select opt in $OPTIONS; do
 		sudo apt-get install git
 
 	elif [ "$opt" = "opencv" ]; then
-		sudo apt-get install libopencv-dev python3-opencv
+		sudo apt-get install libopencv-dev python-opencv
 
 	elif [ "$opt" = "pybind" ]; then
 		if [ ! -d "3rdparty" ]; then
