@@ -5,7 +5,7 @@ import numpy as np
 
 from vtk_visualize import vtk_visualize
 
-HOST = "192.168.1.201"
+#HOST = '10.12.218.167'
 PORT = 2368
 
 NUM_LASERS = 16
@@ -44,6 +44,7 @@ if __name__ == '__main__':
             for offset in range(0, 1200, 100):
                 # 12 bags' head
                 flag, theta = struct.unpack_from("<HH", data, offset)
+                print('theta:', theta)
                 assert flag == 0xEEFF
                 
                 # 2*16 data
@@ -52,9 +53,8 @@ if __name__ == '__main__':
                     theta += step
                     theta %= ROTATION_MAX_UNITS
                     if prev_theta is not None and theta < prev_theta:
-                        #print(theta , prev_theta)
+                        # one cicle
                         scan_index += 1
-                        #break
 
                     prev_theta = theta
                     # H-distance (2mm step), B-reflectivity

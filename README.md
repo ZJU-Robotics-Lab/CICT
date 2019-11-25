@@ -23,10 +23,13 @@ python camera/run.py
 cd scripts
 python calibration.py --dir imgs --test left-0001.png
 ```
-
+* LiDAR data reading
+```bash
+python LiDAR/lidar.py
+```
 
 # Test List
-- [x] LiDAR data reading in python
+- [x] LiDAR python script optimization
 - [ ] GPS data reading
 - [ ] CAN-USB test with python-can
 - [x] IMU data reading

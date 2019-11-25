@@ -1,11 +1,6 @@
 import vtk
 import numpy as np
 
-x_thresh = [-1.1, 2.1]*10
-y_thresh = [1.5, 4.5]*10
-z_thresh = [-0.4, 2.1]*10
-
-
 class VtkPointCloud:
     def __init__(self, zMin=-1.0, zMax=1.0, maxNumPoints=1e6):
         self.init_planes()
@@ -57,25 +52,17 @@ class VtkPointCloud:
         self.plane_vtkActor.SetMapper(plane_mapper)
         
 def vtk_visualize(point_list):
-    global x_thresh, y_thresh, z_thresh
     point_cloud = VtkPointCloud()
 
+    z_max = max(point_list[:][2])
+    z_min = min(point_list[:][2])
+    z_max = min(z_max, 1)
+    z_min = max(z_min, -1)
     for i in range(len(point_list)):
         point_coords = point_list[i]
-
-        if (point_coords[0] > x_thresh[0]) and (point_coords[0] < x_thresh[1]) and \
-                (point_coords[1] > y_thresh[0]) and (point_coords[1] < y_thresh[1]) and \
-                (point_coords[2] > z_thresh[0]) and (point_coords[2] < z_thresh[1]):
-            color_num = 0.7
-        else:
-            color_num = -1
+        color_num = 2*(point_coords[2] - z_min)/(z_max - z_min) - 1
         point_cloud.addPoint(point_list[i], color_num)
 
-    # Add the velodyne plane
-    for x in np.linspace(-4, 4, 100):
-        for y in np.linspace(0, 2, 25):
-            tmp_coords = np.array([x, 0, y])
-            point_cloud.addPoint(tmp_coords, 1)
     # Add the floor plane
     plane_center = (-4, -4, -0.55)
     normal = (0, 0, 1)

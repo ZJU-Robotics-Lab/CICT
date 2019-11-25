@@ -8,7 +8,8 @@ select opt in $OPTIONS; do
 		sudo apt-get install cmake
 
 	elif [ "$opt" = "opencv" ]; then
-		sudo apt-get install libopencv-dev python3-opencv
+		sudo apt-get install libopencv-dev
+		pip install opencv-python
 
 	elif [ "$opt" = "pybind" ]; then
 		if [ ! -d "3rdparty" ]; then
