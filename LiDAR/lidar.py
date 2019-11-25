@@ -3,8 +3,6 @@ import struct
 import socket
 import threading
 import numpy as np
-import time
-from time import sleep
 from queue import Queue
 import pyqtgraph.opengl as gl
 from pyqtgraph.Qt import QtCore, QtGui
@@ -29,6 +27,9 @@ class LiDAR:
         self.points = []
         self.scan_index = 0 # cicle num
         self.theta = 0
+        self.list_dis = []
+        self.list_theta = []
+        self.list_id = []
         
     def start(self):
         self.soc = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -43,14 +44,18 @@ class LiDAR:
     def clear(self):
         self.data_queue.queue.clear()
         
-    def calc(self, dis, azimuth, laser_id, timestamp):
+    def calc(self, dis, azimuth, laser_id):
+        dis = np.array(dis)
+        azimuth = np.array(azimuth)
         R = dis * self.DISTANCE_RESOLUTION
-        omega = self.LASER_ANGLES[laser_id] * np.pi / 180.0
+        omega = [self.LASER_ANGLES[item] * np.pi / 180.0 for item in laser_id]
         alpha = azimuth / 100.0 * np.pi / 180.0
         X = R * np.cos(omega) * np.sin(alpha)
         Y = R * np.cos(omega) * np.cos(alpha)
         Z = R * np.sin(omega)
-        return [X, Y, Z]
+        _pts = np.dstack((X,Y))
+        pts = np.dstack((_pts,Z))[0]
+        return pts
     
     def read_data(self):
         while not self.stop_read_event.is_set():
@@ -78,16 +83,27 @@ class LiDAR:
                                 print('WARNNING: LiDAR data queue is FULL !')
                                 with self.data_queue.mutex:
                                     self.data_queue.queue.clear()
+
+                            self.points = self.calc(self.list_dis, self.list_theta, self.list_id)
                             self.data_queue.put(self.points)
+                            self.list_dis = []
+                            self.list_theta = []
+                            self.list_id = []
                             self.points = []
 
                         # H-distance (2mm step), B-reflectivity
                         arr = struct.unpack_from('<' + "HB" * 16, data, offset + 4 + step * 48)
-                        #print(len(arr))
                         for i in range(self.NUM_LASERS):
-                            time_offset = 0#(55.296 * seq_index + 2.304 * i) / 1000000.0
+                            #time_offset = (55.296 * seq_index + 2.304 * i) / 1000000.0
+                            #ts = timestamp + time_offset
                             if arr[i * 2] != 0:
-                                self.points.append(self.calc(arr[i * 2], theta, i, timestamp + time_offset))
+                                #self.points.append(self.calc(arr[i * 2], theta, i))
+                                self.list_dis.append(arr[i * 2])
+                                self.list_theta.append(theta)
+                                self.list_id.append(i)
+
+            #self.points.append(self.calc(self.list_dis, self.list_theta, self.list_id))
+
             
             
 class Visualizer(object):
@@ -123,6 +139,9 @@ class Visualizer(object):
     def start(self):
         if (sys.flags.interactive != 1) or not hasattr(QtCore, 'PYQT_VERSION'):
             QtGui.QApplication.instance().exec_()
+            
+    def stop(self):
+        QtGui.QApplication.instance().quit()
 
     def set_plotdata(self, points, color):
         self.traces[0].setData(pos=points, color=color)
@@ -130,33 +149,41 @@ class Visualizer(object):
     def update(self):
         if not self.data_queue.empty():
             pts = self.data_queue.get()
-            self.points = np.array(pts)
+            self.points = pts
 
         self.set_plotdata(
             points=self.points,
-            color=(1.,1.,0.,1.)
+            color=(0.,1.,1.,1.)#self.get_color(self.points)
         )
 
     def animation(self):
         timer = QtCore.QTimer()
         timer.timeout.connect(self.update)
-        timer.start(50)
+        timer.start(16)
         self.start()
         
     def get_color(self, pts):
+        z_max = np.max(pts, axis=0)[2]
+        z_min = np.min(pts, axis=0)[2]
+        z_avg = np.mean(pts, axis=0)[2]
+        delta = min(z_max - z_avg, z_avg - z_min)
+        z_max = z_avg + delta
+        z_min = z_avg - delta
+        
         colors = np.ones((pts.shape[0], 4))
         for i in range(len(pts)):
-            colors[i][0] = 0
-            colors[i][1] = 1
-            colors[i][2] = 1
+            color = (pts[i][2] - z_min)/(z_max - z_min)
+            color = max(0, min(color, 1))
+            colors[i][0] = 2*color-1 if color > 0.5 else 0
+            colors[i][1] = 2 - 2*color if color > 0.5 else 2*color
+            colors[i][2] = 0 if color > 0.5 else 1 - 2*color
         return colors
                                 
 if __name__ == '__main__':
     lidar = LiDAR()
     lidar.start()
-
-    #v = Visualizer(lidar.data_queue)
-    #v.animation()
-    
-    sleep(100)
+    v = Visualizer(lidar.data_queue)
+    # it will block here and not stop
+    v.animation()
+    v.stop()
     lidar.stop()

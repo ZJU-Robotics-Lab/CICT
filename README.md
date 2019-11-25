@@ -29,7 +29,7 @@ python LiDAR/lidar.py
 ```
 
 # Test List
-- [x] LiDAR python script optimization
+- [x] LiDAR visualization blocking problem
 - [ ] GPS data reading
 - [ ] CAN-USB test with python-can
 - [x] IMU data reading
