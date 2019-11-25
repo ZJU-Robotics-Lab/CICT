@@ -5,7 +5,7 @@ select opt in $OPTIONS; do
 		sudo apt-get install cmake
 
 	elif [ "$opt" = "git" ]; then
-		sudo apt-get install cmake
+		sudo apt-get install git
 
 	elif [ "$opt" = "opencv" ]; then
 		sudo apt-get install libopencv-dev
