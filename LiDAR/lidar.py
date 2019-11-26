@@ -6,7 +6,13 @@ import numpy as np
 from queue import Queue
 import pyqtgraph.opengl as gl
 from pyqtgraph.Qt import QtCore, QtGui
+from pyquery import PyQuery as pq
         
+HOST = "10.12.225.93"
+IP = "10.12.218.167"
+GATEWAY = "10.12.218.1"
+RPM = "595"
+
 class LiDAR:
     def __init__(self, port=2368):
         self.PORT = port
@@ -30,7 +36,29 @@ class LiDAR:
         self.list_dis = []
         self.list_theta = []
         self.list_id = []
-        
+        self.set_param()
+    
+    def set_param(self, host = HOST, ip = IP, gateway = GATEWAY, rpm = RPM):
+        try:
+            pq('http://10.12.218.167/cgi/setting/host', 
+                         {'addr':HOST },
+                          method='post',verify=True)
+        except:
+            pass
+        try:
+            pq('http://10.12.218.167/cgi/setting', 
+                         {'rpm':RPM },
+                          method='post',verify=True)
+        except:
+            pass
+        try:
+            pq('http://10.12.218.167/cgi/setting/net', 
+                         {'addr':IP,
+                          'gateway' : GATEWAY},
+                          method='post',verify=True)
+        except:
+            pass
+
     def start(self):
         self.soc = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.soc.bind(('', self.PORT))
