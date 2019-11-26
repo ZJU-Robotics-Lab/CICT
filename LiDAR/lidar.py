@@ -6,7 +6,12 @@ import numpy as np
 from queue import Queue
 import pyqtgraph.opengl as gl
 from pyqtgraph.Qt import QtCore, QtGui
-        
+
+USE_CUDA = True
+if USE_CUDA:
+    import torch
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
 class LiDAR:
     def __init__(self, port=2368):
         self.PORT = port
@@ -57,6 +62,28 @@ class LiDAR:
         pts = np.dstack((_pts,Z))[0]
         return pts
     
+    def calc_cuda(self, dis, azimuth, laser_id):
+        dis = np.array(dis)
+        dis = torch.from_numpy(dis).to(device)
+        
+        azimuth = np.array(azimuth)
+        azimuth = torch.from_numpy(azimuth).to(device)
+        
+        R = dis * self.DISTANCE_RESOLUTION
+        
+        omega = [self.LASER_ANGLES[item] * np.pi / 180.0 for item in laser_id]
+        omega = np.array(omega)
+        omega = torch.from_numpy(omega).to(device)
+        
+        alpha = azimuth / 100.0 * np.pi / 180.0
+        X = R * torch.cos(omega) * torch.sin(alpha)
+        Y = R * torch.cos(omega) * torch.cos(alpha)
+        Z = R * torch.sin(omega)
+        
+        _pts = torch.stack((X, Y), 1)
+        pts = torch.cat((_pts, Z.unsqueeze(-1)), 1)
+        return pts.cpu().numpy()
+    
     def read_data(self):
         while not self.stop_read_event.is_set():
             data = self.soc.recv(2000)
@@ -83,8 +110,11 @@ class LiDAR:
                                 print('WARNNING: LiDAR data queue is FULL !')
                                 with self.data_queue.mutex:
                                     self.data_queue.queue.clear()
-
-                            self.points = self.calc(self.list_dis, self.list_theta, self.list_id)
+                            
+                            if USE_CUDA:
+                                self.points = self.calc_cuda(self.list_dis, self.list_theta, self.list_id)
+                            else:
+                                self.points = self.calc(self.list_dis, self.list_theta, self.list_id)
                             self.data_queue.put(self.points)
                             self.list_dis = []
                             self.list_theta = []
