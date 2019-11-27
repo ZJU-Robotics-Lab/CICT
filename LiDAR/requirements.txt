@@ -1,0 +1,5 @@
+pyopengl
+PyQt5
+pyqtgraph
+numpy
+pyquery

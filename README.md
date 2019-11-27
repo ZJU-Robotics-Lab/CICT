@@ -27,9 +27,12 @@ python calibration.py --dir imgs --test left-0001.png
 ```bash
 python LiDAR/lidar.py
 ```
+* IMU data reading
+```bash
+bash IMU/get_permission.sh
+python IMU/mtnode.py
+```
 
 # Test List
-- [x] LiDAR visualization blocking problem
-- [ ] GPS data reading
-- [ ] CAN-USB test with python-can
-- [x] IMU data reading
+- [x] GPS data reading
+- [x] CAN-USB test with python-can

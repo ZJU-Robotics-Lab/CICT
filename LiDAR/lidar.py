@@ -6,7 +6,10 @@ import numpy as np
 from queue import Queue
 import pyqtgraph.opengl as gl
 from pyqtgraph.Qt import QtCore, QtGui
-from pyquery import PyQuery as pq
+try:
+    from pyquery import PyQuery as pq
+except:
+    pass
      
 USE_CUDA = False
 if USE_CUDA:
@@ -14,10 +17,10 @@ if USE_CUDA:
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 
-HOST = "10.12.225.93"
-IP = "10.12.218.167"
-GATEWAY = "10.12.218.1"
-RPM = "600"
+HOST = '10.12.218.255'
+IP = '10.12.218.167'
+GATEWAY = '10.12.218.1'
+RPM = '600'
 
 class LiDAR:
     def __init__(self, port=2368):
