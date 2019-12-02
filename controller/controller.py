@@ -12,7 +12,9 @@ from can import BusABC, Message
 sys_type = platform.system()
 CHANNEL = 'COM5' if sys_type == 'Windows' else '/dev/ttyUSB0'
 BAUD_RATE = 1228800
-ID = 0x203
+SEND_ID = 0x203
+RECEIVE_ID_LOW = 0x183
+RECEIVE_ID_HIGH = 0x283
 
 class SerialBus(BusABC):
     def __init__(
@@ -49,7 +51,7 @@ class SerialBus(BusABC):
             # or raise a SerialException
             rx_byte = self.ser.read()
         except serial.SerialException:
-            return None, False
+            return None
 
         if rx_byte and ord(rx_byte) == 0xaa:
             config = self.ser.read()
@@ -64,6 +66,7 @@ class SerialBus(BusABC):
             arb_id = 0
             for i in range(arb_id_length):
                 arb_id += self.ser.read() << (i * 8)
+                
             dlc = config & 0x0f
             data = self.ser.read(dlc)
             rxd_byte = ord(self.ser.read())
@@ -74,22 +77,35 @@ class SerialBus(BusABC):
                     dlc = dlc,
                     data = data,
                 )
-                return msg, False
+                return msg
 
         else:
-            return None, False
+            return None
 
 
 class Controller:
-    def __init__(self, channel=CHANNEL, baudrate=BAUD_RATE):
+    def __init__(self, channel=CHANNEL, baudrate=BAUD_RATE, send_id = SEND_ID):
         self.bus = SerialBus(
             channel = channel, 
             baudrate = baudrate
         )
+        self.send_id = send_id
         self.max_speed = 1000
         self.max_rotation = 580
         self.acc_time = 10
-        
+
+# message read from car
+        self.cur_motor_pwm_speed = 0        # current motor speed by pwm 0 ~ 2700
+        self.cur_rotation = 0               # current rotation
+        self.cur_rot_error = False          # rotation EPS error
+        self.cur_ctr_error = False          # controller error
+        self.cur_battery_temperature = 0    
+        self.cur_ctr_emergenry_stop = False # controller has emergentry stopped
+        self.cur_ctr_auto = False           # under program's control
+        self.cur_battery_power = 100        # 0 ~ 100%
+        self.cur_motor_current = 0          # current of motor
+        self.cur_speed = 0                  # current speed km/h
+
         self.has_reversed = False
         self.stop_send = threading.Event()
         self.stop_receive = threading.Event()
@@ -109,7 +125,20 @@ class Controller:
                 0x00, 0x00, # ratation 580-1220 low-high
                 0x00       # none
                 ]
-        
+        self.rx_data_low = [
+                0x00, 0x00, # low-high: motor speed by pwm 0~2700 rpm 
+                0x00, 0x00, # low-high: ratation 580-1220
+                0x00,       # error msg: bit 0 is rotation EPS error, bit 1 is controller error
+                0x00,       # battery temperature
+                0x00,       # bit 1: emergentry stop status
+                0x00        # battery power 0~100%
+                ]
+        self.rx_data_high = [
+                0x00, 0x00, # motor current *10 mA
+                0x00,       # current car speed km/h
+                0x00, 0x00, 0x00, 0x00, 0x00        # none
+                ]
+
         self.set_acc_time(self.acc_time)
         self.set_forward()
 
@@ -146,22 +175,6 @@ class Controller:
     
     def get_acc_time(self):
         return self.acc_time
-    
-    def apply_config(self):
-        self.stop_send.set()
-        if self.has_reversed:
-            self.has_reversed = False
-            self.stop_now(1) # stop for 1 second if the dir reversed
-
-        while self.send_cyclic.is_alive():
-            pass
-        self.stop_send.clear()
-        self.send_cyclic = threading.Thread(
-            target=self.send, 
-            args=()
-        )
-        self.send_cyclic.start()
-
 
     # input (0, 1)
     def set_speed(self, speed):
@@ -181,6 +194,7 @@ class Controller:
 
     def set_stop(self):
         self.cmd_data[0] = 0x09
+        self.has_reversed = False
 
     # input (-1, 1)
     def set_rotation(self, rotation):
@@ -188,43 +202,58 @@ class Controller:
         self.cmd_data[5] = rotation & 0xff
         self.cmd_data[6] = (rotation & 0xff00) >> 8
 
-    def stop_now(self, time):
-        data = [0x09,      # 03 forward 05 backward 09 break
-                0x00, 0x00, # speed low-high 0~2700 rpm
-                0x00,       # acc 0.2~25.5s
-                0x00,       # none
-                0x00, 0x00, # ratation 580-1220 low-high
-                0x00       # none
-                ]
-        tx_msg = can.Message(
-                arbitration_id = ID,
-                data = data
-                )
-        self.stop_send.set()
-        while self.send_cyclic.is_alive():
-            pass
-        self.stop_send.clear()
-        self.send_cyclic = threading.Thread(
-                target=self.send, 
-                args=(tx_msg,)
-        )
-        
-        self.send_cyclic.start()
-        time.sleep(time)
-        self.stop_send.set()
-        while self.send_cyclic.is_alive():
-            pass
-        self.stop_send.clear()
+    def cmd_reversed(self):
+        return self.has_reversed
 
+    def cur_motor_pwm_speed(self):
+        return self.cur_motor_pwm_speed
 
+    def cur_rotation(self):
+        return self.cur_rotation
+
+    def cur_rot_error(self):
+        return self.cur_rot_error
+
+    def cur_ctr_error(self):
+        return self.cur_ctr_error
+
+    def cur_battery_temperature(self):
+        return self.cur_battery_temperature
+
+    def cur_ctr_emergenry_stop(self):
+        return self.cur_ctr_emergenry_stop
+
+    def cur_ctr_auto(self):
+        return self.cur_ctr_auto
+
+    def cur_battery_power(self):
+        return self.cur_battery_power
+
+    def cur_motor_current(self):
+        return self.cur_motor_current
+
+    def cur_speed(self):
+        return self.cur_speed
+
+    def unpack(self):
+        self.cur_motor_pwm_speed = self.rx_data_low[1] << 8 + self.rx_data_low[0]        
+        self.cur_rotation = self.rx_data_low[3] << 8 + self.rx_data_low[2]                
+        self.cur_rot_error = bool(self.rx_data_low[4] & 0x01)          
+        self.cur_ctr_error = bool(self.rx_data_low[4] & 0x02)          
+        self.cur_battery_temperature = self.rx_data_low[5]    
+        self.cur_ctr_emergenry_stop = bool(self.rx_data_low[6] & 0x01)
+        self.cur_ctr_auto = bool(self.rx_data_low[6] & 0x02)           
+        self.cur_battery_power = self.rx_data_low[7]        
+        self.cur_motor_current = self.rx_data_high[1] << 8 + self.rx_data_high[0]          
+        self.cur_speed = self.rx_data_high[2]                  
 
     def send(self):
         """The loop for sending."""
         print("Start to send messages")
         start_time = time.time()
         while not self.stop_send.is_set():
-            msg = can.Message(
-                arbitration_id = ID,
+            msg = Message(
+                arbitration_id = self.send_id,
                 data = self.cmd_data
             )
             msg.timestamp = time.time() - start_time
@@ -237,6 +266,14 @@ class Controller:
         print("Start receiving messages")
         while not self.stop_receive.is_set():
             rx_msg = self.bus.recv()
+            if rx_msg.arbitration_id == RECEIVE_ID_LOW:
+                self.rx_data_low = rx_msg.data
+                unpack()
+            elif rx_msg.arbitration_id == RECEIVE_ID_HIGH:
+                self.rx_data_high = rx_msg.data
+                unpack()
+            else:
+                print("Oh shit!!! Receive id：%x is wrong!!!" % rx_msg.arbitration_id)
             # if rx_msg is not None:
                 # print("rx: {}".format(rx_msg))
         print("Stopped receiving messages")
