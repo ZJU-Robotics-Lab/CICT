@@ -32,16 +32,7 @@ class SerialBus(BusABC):
         self.ser.close()
 
     def send(self, msg):
-        """
-        try:
-            timestamp = struct.pack("<I", int(msg.timestamp * 1000))
-        except struct.error:
-            raise ValueError("Timestamp is out of range")
-        try:
-            a_id = struct.pack("<I", msg.arbitration_id)
-        except struct.error:
-            raise ValueError("Arbitration Id is out of range")
-        """
+
         byte_msg = bytearray()
         byte_msg.append(0xaa)
         byte_msg.append(0xc8)
@@ -61,31 +52,32 @@ class SerialBus(BusABC):
             return None, False
 
         if rx_byte and ord(rx_byte) == 0xaa:
-            s = bytearray(self.ser.read(4))
-            timestamp = (struct.unpack("<I", s))[0]
-            dlc = ord(self.ser.read())
+            config = self.ser.read()
 
-            s = bytearray(self.ser.read(4))
-            arb_id = (struct.unpack("<I", s))[0]
+            if config & 0x10:
+                print("Oh shit!!! This is remote frame!!!")
+            if config & 0x20:
+                arb_id_length = 4
+            else:
+                arb_id_length = 2
+
+            arb_id = 0
+            for i in range(arb_id_length):
+                arb_id += self.ser.read() << (i * 8)
+            dlc = config & 0x0f
             data = self.ser.read(dlc)
             rxd_byte = ord(self.ser.read())
-            if rxd_byte == 0xBB:
+            if rxd_byte == 0x55:
                 # received message data okay
                 msg = Message(
-                    timestamp=timestamp / 1000,
-                    arbitration_id=arb_id,
-                    dlc=dlc,
-                    data=data,
+                    arbitration_id = arb_id,
+                    dlc = dlc,
+                    data = data,
                 )
                 return msg, False
 
         else:
             return None, False
-
-    def fileno(self):
-        if hasattr(self.ser, "fileno"):
-            return self.ser.fileno()
-        return -1
 
 
 class Controller:
@@ -242,15 +234,12 @@ class Controller:
         print("Stopped sending messages")
 
     def receive(self):
-        pass
-        """
         print("Start receiving messages")
         while not self.stop_receive.is_set():
-            rx_msg = self.bus.recv(1)
+            rx_msg = self.bus.recv()
             # if rx_msg is not None:
                 # print("rx: {}".format(rx_msg))
         print("Stopped receiving messages")
-        """
 
 
 
