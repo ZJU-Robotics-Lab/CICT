@@ -117,6 +117,9 @@ class Controller:
                 0x00, 0x00, # ratation 580-1220 low-high
                 0x00       # none
                 ]
+        
+        self.set_acc_time(self.acc_time)
+        self.set_forward()
 
     def start(self):
         self.stop_send.clear()

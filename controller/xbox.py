@@ -148,8 +148,6 @@ if __name__ == '__main__':
     CAN_CHANNEL = 'COM5' if sys_type == 'Windows' else '/dev/ttyUSB0'
     ctrl = Controller(CAN_CHANNEL)
     ctrl.start()
-    ctrl.set_acc_time(10)
-    ctrl.set_forward()
     
     joystick = JoyStick(ctrl, verbose=False)
     joystick.start()
