@@ -49,22 +49,15 @@ class LiDAR:
     
     def set_param(self, host = HOST, ip = IP, gateway = GATEWAY, rpm = RPM):
         try:
-            pq('http://10.12.218.167/cgi/setting/host', 
-                         {'addr':HOST },
-                          method='post',verify=True)
+            pq('http://10.12.218.167/cgi/setting/host', {'addr':HOST }, method='post', verify=True)
         except:
             pass
         try:
-            pq('http://10.12.218.167/cgi/setting', 
-                         {'rpm':RPM },
-                          method='post',verify=True)
+            pq('http://10.12.218.167/cgi/setting', {'rpm':RPM }, method='post',verify=True)
         except:
             pass
         try:
-            pq('http://10.12.218.167/cgi/setting/net', 
-                         {'addr':IP,
-                          'gateway' : GATEWAY},
-                          method='post',verify=True)
+            pq('http://10.12.218.167/cgi/setting/net', {'addr':IP, 'gateway' : GATEWAY}, method='post',verify=True)
         except:
             pass
 
