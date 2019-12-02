@@ -32,6 +32,19 @@ python LiDAR/lidar.py
 bash IMU/get_permission.sh
 python IMU/mtnode.py
 ```
+* XBox control
+  * Right axis up: speed
+  * Top axis left and right: rotation
+  * Buttom Y: forward
+  * Buttom A: backward
+  * Buttom LOG: break and stop
+  * Hat up and down: increase or reduce max speed
+  * Hat right and left: increase or reduce acceleration
+```bash
+cd controller
+bash get_permission.sh
+python xbox.py
+```
 
 # Test List
 - [x] GPS data reading
