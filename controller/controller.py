@@ -116,11 +116,11 @@ class Controller:
         self.stop_send = threading.Event()
         self.stop_receive = threading.Event()
         self.t_send_cyclic = threading.Thread(
-                target=send_cyclic, 
-                args=(tx_msg)
+                target=self.send_cyclic, 
+                args=(tx_msg,)
         )
         self.t_receive = threading.Thread(
-            target=receive, 
+            target=self.receive, 
             args=()
         )
 
@@ -131,21 +131,24 @@ class Controller:
     def stop_event(self):
         self.stop_send.set()
         self.stop_receive.set()
+        self.bus.shutdown()
 
-    def apply_config(slef):
+    def apply_config(self):
         self.stop_send.set()
         if self.has_reversed:
             self.has_reversed = False
             stop_now(1) # stop for 1 second if the dir reversed
         tx_msg = can.Message(
             arbitration_id = ID,
-            data = data
+            data = self.cmd_data
         )
-        self.t_send_cyclic = threading.Thread(
-            target=send_cyclic, 
-            args=(tx_msg)
-        )
+        while self.t_send_cyclic.is_alive():
+            pass
         self.stop_send.clear()
+        self.t_send_cyclic = threading.Thread(
+            target=self.send_cyclic, 
+            args=(tx_msg,)
+        )
         self.t_send_cyclic.start()
 
 
@@ -190,14 +193,20 @@ class Controller:
                 data = data
                 )
         self.stop_send.set()
+        while self.t_send_cyclic.is_alive():
+            pass
+        self.stop_send.clear()
         self.t_send_cyclic = threading.Thread(
                 target=send_cyclic, 
-                args=(tx_msg)
+                args=(tx_msg,)
         )
-        self.stop_send.clear()
+        
         self.t_send_cyclic.start()
         time.sleep(time)
         self.stop_send.set()
+        while self.t_send_cyclic.is_alive():
+            pass
+        self.stop_send.clear()
 
 
 
@@ -207,7 +216,7 @@ class Controller:
         start_time = time.time()
         while not self.stop_send.is_set():
             msg.timestamp = time.time() - start_time
-            bus.send(msg)
+            self.bus.send(msg)
             print(f"tx: {msg}")
             time.sleep(0.001)
         print("Stopped sending messages")
@@ -216,7 +225,7 @@ class Controller:
         """The loop for receiving."""
         print("Start receiving messages")
         while not self.stop_receive.is_set():
-            rx_msg = bus.recv(1)
+            rx_msg = self.bus.recv(1)
             if rx_msg is not None:
                 print("rx: {}".format(rx_msg))
         print("Stopped receiving messages")
@@ -225,4 +234,13 @@ class Controller:
 
 
 if __name__ == "__main__":
-    pass
+    ctrl = Controller()
+    ctrl.start()
+    ctrl.set_speed(0)
+    ctrl.set_acc_time(0)
+    ctrl.set_rotation(00)
+    ctrl.set_forward()
+    print("apply!!!!!!!!!!!!!!!!!!!!!!!!!")
+    ctrl.apply_config()
+    time.sleep(1)
+    ctrl.stop_event()
