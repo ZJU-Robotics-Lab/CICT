@@ -48,6 +48,7 @@ class CtrlBoxVisualizer(object):
             self.items[15] : self.ctrl.get_cur_ctr_emergenry_stop(),
         }
         self.params_children = []
+        self.need_update_param = False
         self.get_new_param_children()
         self.app = QtGui.QApplication(sys.argv)
         self.params = Parameter.create(name='params', type='group', children=self.params_children)
@@ -78,11 +79,18 @@ class CtrlBoxVisualizer(object):
         QtGui.QApplication.instance().quit()
 
     def update(self):
-        self.get_new_param_children()
-        self.params.clearChildren()
-        self.params.addChildren(self.params_children)
-        self.params_tree.setParameters(self.params, showTop=False)
-        self.layout.addWidget(self.params_tree, 1, 0, 1, 1)
+        for child in self.params.children():
+            if child.name() in self.items and not child.value() == self.find_function[child.name()]:
+                self.need_update_param = True
+            for sub_child in child.children():
+                if sub_child.name() in self.items and not sub_child.value() == self.find_function[sub_child.name()]:
+                    self.need_update_param = True
+        if self.need_update_param:
+            self.get_new_param_children()
+            self.params.clearChildren()
+            self.params.addChildren(self.params_children)
+            self.params_tree.setParameters(self.params, showTop=False)
+            self.layout.addWidget(self.params_tree, 1, 0, 1, 1)
 
     def get_new_param_children(self):
         self.params_children = [
@@ -115,8 +123,9 @@ class CtrlBoxVisualizer(object):
                 ]},
             ]},
         ]
+        self.need_update_param = False
 
-    def timer_event(self):
+    def animation(self):
         timer = QtCore.QTimer()
         timer.timeout.connect(self.update)
         timer.start(16)
@@ -125,5 +134,5 @@ class CtrlBoxVisualizer(object):
 ## Start Qt event loop unless running in interactive mode or using pyside.
 if __name__ == '__main__':
     ctrl = Controller()
-    vis = BoxVisualizer(ctrl)
-    vis.timer_event()
+    vis = CtrlBoxVisualizer(ctrl)
+    vis.animation()
