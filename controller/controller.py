@@ -85,10 +85,12 @@ class SerialBus(BusABC):
 
 class Controller:
     def __init__(self, channel=CHANNEL, baudrate=BAUD_RATE, send_id = SEND_ID):
-        self.bus = SerialBus(
-            channel = channel, 
-            baudrate = baudrate
-        )
+        # self.bus = SerialBus(
+        #     channel = channel, 
+        #     baudrate = baudrate
+        # )
+        self.bus = None
+
         self.send_id = send_id
         self.max_speed = 1000
         self.max_rotation = 580
@@ -159,22 +161,13 @@ class Controller:
         
     def set_max_rotation(self, max_rotation):
         self.max_rotation = min(580, max(0, max_rotation))
-        
+
     # acc 0.2~25.5s
     def set_acc_time(self, acc_time):
         acc_time = min(30, max(5, acc_time))
         self.acc_time = acc_time
         acc_time = int(acc_time)
         self.cmd_data[3] = acc_time & 0xff
-        
-    def get_max_speed(self):
-        return self.max_speed
-        
-    def get_max_rotation(self):
-        return self.max_rotation
-    
-    def get_acc_time(self):
-        return self.acc_time
 
     # input (0, 1)
     def set_speed(self, speed):
@@ -202,37 +195,61 @@ class Controller:
         self.cmd_data[5] = rotation & 0xff
         self.cmd_data[6] = (rotation & 0xff00) >> 8
 
-    def cmd_reversed(self):
+    def get_max_speed(self):
+        return self.max_speed
+        
+    def get_max_rotation(self):
+        return self.max_rotation
+
+    def get_cmd_stop(self):
+        return bool(self.cmd_data[0] & 0x09)
+
+    def get_cmd_forward(self):
+        return bool(self.cmd_data[0] & 0x05)
+
+    def get_cmd_backward(self):
+        return bool(self.cmd_data[0] & 0x03)
+
+    def get_cmd_acc_time(self):
+        return self.acc_time
+
+    def get_cmd_speed(self):
+        return self.cmd_data[1] + self.cmd_data[2] << 8
+
+    def get_cmd_rotation(self):
+        return self.cmd_data[5] + self.cmd_data[6] << 8
+
+    def get_cmd_reversed(self):
         return self.has_reversed
 
-    def cur_motor_pwm_speed(self):
+    def get_cur_motor_pwm_speed(self):
         return self.cur_motor_pwm_speed
 
-    def cur_rotation(self):
+    def get_cur_rotation(self):
         return self.cur_rotation
 
-    def cur_rot_error(self):
+    def get_cur_rot_error(self):
         return self.cur_rot_error
 
-    def cur_ctr_error(self):
+    def get_cur_ctr_error(self):
         return self.cur_ctr_error
 
-    def cur_battery_temperature(self):
+    def get_cur_battery_temperature(self):
         return self.cur_battery_temperature
 
-    def cur_ctr_emergenry_stop(self):
+    def get_cur_ctr_emergenry_stop(self):
         return self.cur_ctr_emergenry_stop
 
-    def cur_ctr_auto(self):
+    def get_cur_ctr_auto(self):
         return self.cur_ctr_auto
 
-    def cur_battery_power(self):
+    def get_cur_battery_power(self):
         return self.cur_battery_power
 
-    def cur_motor_current(self):
+    def get_cur_motor_current(self):
         return self.cur_motor_current
 
-    def cur_speed(self):
+    def get_cur_speed(self):
         return self.cur_speed
 
     def unpack(self):
