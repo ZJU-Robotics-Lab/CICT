@@ -62,14 +62,14 @@ class JoyStick:
             if self.verbose:
                 print('rotation:', rotation)
             if not self.halt and self.ctrl != None:
-                ctrl.set_rotation(rotation)
+                self.ctrl.set_rotation(rotation)
         else:
             speed = self.joystick.get_axis(4)
             speed = max(-speed, 0)
             if self.verbose:
                 print('speed:',speed)
             if not self.halt and self.ctrl != None:
-                ctrl.set_speed(speed)
+                self.ctrl.set_speed(speed)
             
             rotation_l = self.joystick.get_axis(2)
             rotation_r = self.joystick.get_axis(5)
@@ -84,7 +84,7 @@ class JoyStick:
             if self.verbose:
                 print('rotation:', rotation)
             if not self.halt and self.ctrl != None:
-                ctrl.set_rotation(rotation)
+                self.ctrl.set_rotation(rotation)
         
     def parse_buttom(self):
         buttons = self.joystick.get_numbuttons()
