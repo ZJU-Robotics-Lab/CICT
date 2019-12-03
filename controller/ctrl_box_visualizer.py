@@ -1,16 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-# -*- coding: utf-8 -*-
-"""
-This example demonstrates the use of pyqtgraph's parametertree system. This provides
-a simple way to generate user interfaces that control sets of parameters. The example
-demonstrates a variety of different parameter types (int, float, list, etc.)
-as well as some customized parameter types
-
-"""
-
-
-# import initExample ## Add path to library (just for examples; you do not need this)
 
 import pyqtgraph as pg
 from pyqtgraph.Qt import QtCore, QtGui
