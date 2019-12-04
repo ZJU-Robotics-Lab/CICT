@@ -11,14 +11,14 @@ from can import BusABC, Message
 
 sys_type = platform.system()
 CHANNEL = 'COM5' if sys_type == 'Windows' else '/dev/ttyUSB0'
-BAUD_RATE = 1228800
+BAUD_RATE = 115200
 SEND_ID = 0x203
 RECEIVE_ID_LOW = 0x183
 RECEIVE_ID_HIGH = 0x283
 
 class SerialBus(BusABC):
     def __init__(
-        self, channel, baudrate=BAUD_RATE, timeout=0.1, rtscts=False, *args, **kwargs
+        self, channel, baudrate=BAUD_RATE, timeout=1, rtscts=False, *args, **kwargs
     ):
         """ Baud rate of the serial device in bit/s (default BAUD_RATE). """
         if not channel:
@@ -34,7 +34,6 @@ class SerialBus(BusABC):
         self.ser.close()
 
     def send(self, msg):
-
         byte_msg = bytearray()
         byte_msg.append(0xaa)
         byte_msg.append(0xc8)
@@ -49,13 +48,12 @@ class SerialBus(BusABC):
         try:
             # ser.read can return an empty string
             # or raise a SerialException
-            rx_byte = self.ser.read()
+            rx_bytes = self.ser.read(13)
         except serial.SerialException:
             return None
-
-        if rx_byte and ord(rx_byte) == 0xaa:
-            config = self.ser.read()
-
+        
+        if rx_bytes and struct.unpack_from("=B",rx_bytes, offset = 0)[0] == 0xaa:
+            config = struct.unpack_from("B", rx_bytes, offset = 1)[0]
             if config & 0x10:
                 print("Oh shit!!! This is remote frame!!!")
             if config & 0x20:
@@ -65,11 +63,10 @@ class SerialBus(BusABC):
 
             arb_id = 0
             for i in range(arb_id_length):
-                arb_id += self.ser.read() << (i * 8)
-                
+                arb_id += struct.unpack_from("B", rx_bytes, offset = i + 2)[0] << (i * 8)
             dlc = config & 0x0f
-            data = self.ser.read(dlc)
-            rxd_byte = ord(self.ser.read())
+            data = [struct.unpack_from("B", rx_bytes, offset = i+2+arb_id_length)[0] for i in range(dlc)]
+            rxd_byte = struct.unpack_from("B", rx_bytes, offset = 2+arb_id_length+dlc)[0]
             if rxd_byte == 0x55:
                 # received message data okay
                 msg = Message(
@@ -85,11 +82,10 @@ class SerialBus(BusABC):
 
 class Controller:
     def __init__(self, channel=CHANNEL, baudrate=BAUD_RATE, send_id = SEND_ID):
-        # self.bus = SerialBus(
-        #     channel = channel, 
-        #     baudrate = baudrate
-        # )
-        self.bus = None
+        self.bus = SerialBus(
+            channel = channel, 
+            baudrate = baudrate
+        )
 
         self.send_id = send_id
         self.max_speed = 1000
@@ -171,6 +167,7 @@ class Controller:
 
     # input (0, 1)
     def set_speed(self, speed):
+        speed = min(1.0, max(speed, 0.0)) 
         speed = int(self.max_speed * speed)
         self.cmd_data[1] = speed & 0xff
         self.cmd_data[2] = (speed & 0xff00) >> 8
@@ -191,6 +188,7 @@ class Controller:
 
     # input (-1, 1)
     def set_rotation(self, rotation):
+        rotation = max(-1.0, min(rotation, 1.0))
         rotation = int(self.max_rotation * rotation)
         self.cmd_data[5] = rotation & 0xff
         self.cmd_data[6] = (rotation & 0xff00) >> 8
@@ -199,7 +197,7 @@ class Controller:
         return self.max_speed
         
     def get_max_rotation(self):
-        return self.max_rotation
+        return self.max_rotation                       
 
     def get_cmd_stop(self):
         return bool(self.cmd_data[0] & 0x09)
@@ -283,14 +281,15 @@ class Controller:
         print("Start receiving messages")
         while not self.stop_receive.is_set():
             rx_msg = self.bus.recv()
-            if rx_msg.arbitration_id == RECEIVE_ID_LOW:
-                self.rx_data_low = rx_msg.data
-                unpack()
-            elif rx_msg.arbitration_id == RECEIVE_ID_HIGH:
-                self.rx_data_high = rx_msg.data
-                unpack()
-            else:
-                print("Oh shit!!! Receive id：%x is wrong!!!" % rx_msg.arbitration_id)
+            if rx_msg is not None:
+                if rx_msg.arbitration_id == RECEIVE_ID_LOW:
+                    self.rx_data_low = rx_msg.data
+                    self.unpack()
+                elif rx_msg.arbitration_id == RECEIVE_ID_HIGH:
+                    self.rx_data_high = rx_msg.data
+                    self.unpack()
+                else:
+                    print("Oh shit!!! Receive id：%x is wrong!!!" % rx_msg.arbitration_id)
             # if rx_msg is not None:
                 # print("rx: {}".format(rx_msg))
         print("Stopped receiving messages")
@@ -301,9 +300,12 @@ class Controller:
 if __name__ == "__main__":
     ctrl = Controller()
     ctrl.start()
+    ctrl.set_backward()
+    # ctrl.set_max_rotation(500)
     ctrl.set_speed(0)
-    ctrl.set_acc_time(0)
-    ctrl.set_rotation(-580)
-    ctrl.set_forward()
-    time.sleep(5)
+    ctrl.set_acc_time(10)
+    print('rotation start',ctrl.get_cur_rotation())
+    ctrl.set_rotation(-0.5)
+    print('rotation changed',ctrl.get_cur_rotation())
+    time.sleep(1)
     ctrl.stop_event()
