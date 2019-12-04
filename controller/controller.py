@@ -252,7 +252,8 @@ class Controller:
 
     def unpack(self):
         self.cur_motor_pwm_speed = self.rx_data_low[1] << 8 + self.rx_data_low[0]        
-        self.cur_rotation = self.rx_data_low[3] << 8 + self.rx_data_low[2]                
+        self.cur_rotation = self.rx_data_low[2]
+        self.cur_rotation = -self.cur_rotation if bool(self.rx_data_low[3] & 0x80) else self.cur_rotation                               
         self.cur_rot_error = bool(self.rx_data_low[4] & 0x01)          
         self.cur_ctr_error = bool(self.rx_data_low[4] & 0x02)          
         self.cur_battery_temperature = self.rx_data_low[5]    
