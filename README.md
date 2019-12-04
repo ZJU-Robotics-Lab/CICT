@@ -46,6 +46,13 @@ bash get_permission.sh
 python xbox.py
 ```
 
-# Test List
-- [x] GPS data reading
-- [x] CAN-USB test with python-can
+# TODO List
+- [ ] Rewrite XBox reading, never use pygame again! Need to test on Windows10, Raspberry Pi, Ubuntu18.04 and deploy on Raspberry Pi.
+- [ ] Sensor data synchronize, especially LiDAR data. Need to add timestamps on all sensor data.
+- [ ] Visualization interface merge, including 3D LiDAR, camera, GPS, robot velocity, rotation and battery percentage. Independent program with UDP communication may work well.
+- [ ] Offline map with GPS calibration, and online navigation system like smart phone app (input GPS and output navigation map).
+- [ ] LiDAR and camera external parameter calibration
+- [ ] IPC code deployment
+- [ ] Finish sensor_manager.py and collect new data with RoBoCar.
+- [ ] Deep learning code deployment
+
