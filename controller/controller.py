@@ -5,7 +5,7 @@ import threading
 import platform
 import struct
 import serial
-
+from queue import Queue
 import can
 from can import BusABC, Message
 
@@ -103,7 +103,8 @@ class Controller:
         self.cur_battery_power = 100        # 0 ~ 100%
         self.cur_motor_current = 0          # current of motor
         self.cur_speed = 0                  # current speed km/h
-
+        self.sensor_data = Queue(10)
+        self.update_queue()
         self.has_reversed = False
         self.stop_send = threading.Event()
         self.stop_receive = threading.Event()
@@ -250,9 +251,13 @@ class Controller:
     def get_cur_speed(self):
         return self.cur_speed
 
+    def get_sensor_data(self):
+        return self.sensor_data
+
     def unpack(self):
         self.cur_motor_pwm_speed = self.rx_data_low[1] << 8 + self.rx_data_low[0]        
-        self.cur_rotation = self.rx_data_low[3] << 8 + self.rx_data_low[2]                
+        self.cur_rotation = self.rx_data_low[2]  
+        self.cur_rotation = -self.cur_rotation if bool(self.rx_data_low[3] & 0x80) else self.cur_rotation            
         self.cur_rot_error = bool(self.rx_data_low[4] & 0x01)          
         self.cur_ctr_error = bool(self.rx_data_low[4] & 0x02)          
         self.cur_battery_temperature = self.rx_data_low[5]    
@@ -260,7 +265,23 @@ class Controller:
         self.cur_ctr_auto = bool(self.rx_data_low[6] & 0x02)           
         self.cur_battery_power = self.rx_data_low[7]        
         self.cur_motor_current = self.rx_data_high[1] << 8 + self.rx_data_high[0]          
-        self.cur_speed = self.rx_data_high[2]                  
+        self.cur_speed = self.rx_data_high[2]
+        self.update_queue()                  
+    
+    def update_queue(self):
+        self.sensor_data.queue.clear()
+        self.sensor_data.put(self.cur_motor_pwm_speed)
+        self.sensor_data.put(self.cur_rotation)
+        self.sensor_data.put(self.cur_rotation)
+        self.sensor_data.put(self.cur_rot_error)
+        self.sensor_data.put(self.cur_ctr_error)
+        self.sensor_data.put(self.cur_battery_temperature)
+        self.sensor_data.put(self.cur_ctr_emergenry_stop)
+        self.sensor_data.put(self.cur_ctr_auto)
+        self.sensor_data.put(self.cur_battery_power)
+        self.sensor_data.put(self.cur_motor_current)
+        self.sensor_data.put(self.cur_speed)
+
 
     def send(self):
         """The loop for sending."""
