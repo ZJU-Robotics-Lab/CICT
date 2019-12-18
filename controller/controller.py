@@ -10,11 +10,13 @@ import can
 from can import BusABC, Message
 
 sys_type = platform.system()
-CHANNEL = 'COM5' if sys_type == 'Windows' else '/dev/ttyUSB0'
+CHANNEL = 'COM4' if sys_type == 'Windows' else '/dev/ttyUSB0'
 BAUD_RATE = 115200
 SEND_ID = 0x203
 RECEIVE_ID_LOW = 0x183
 RECEIVE_ID_HIGH = 0x283
+RECEIVE_ID_ROTATION = 0x279
+
 
 class SerialBus(BusABC):
     def __init__(
@@ -39,8 +41,10 @@ class SerialBus(BusABC):
         byte_msg.append(0xc8)
         byte_msg.append(msg.arbitration_id & 0x00ff) # arbitration_id low 
         byte_msg.append(msg.arbitration_id >> 8) # arbitration_id high
-        for i in range(0, msg.dlc):
+        for i in range(msg.dlc):
             byte_msg.append(msg.data[i])
+            # print(hex(msg.data[i]))
+        # print("\n")
         byte_msg.append(0x55)
         self.ser.write(byte_msg)
 
@@ -52,7 +56,9 @@ class SerialBus(BusABC):
         except serial.SerialException:
             return None
         
-        if rx_bytes and struct.unpack_from("=B",rx_bytes, offset = 0)[0] == 0xaa:
+        if rx_bytes and struct.unpack_from("B",rx_bytes, offset = 0)[0] == 0xaa:
+                # print(hex(struct.unpack_from("B",rx_bytes, offset = i)[0]))
+            # print("\n")
             config = struct.unpack_from("B", rx_bytes, offset = 1)[0]
             if config & 0x10:
                 print("Oh shit!!! This is remote frame!!!")
@@ -89,9 +95,9 @@ class Controller:
 
         self.send_id = send_id
         self.max_speed = 1000
-        self.max_rotation = 580
+        self.max_rotation = 500
         self.acc_time = 10
-
+        self.raw_rotation = 0
 # message read from car
         self.cur_motor_pwm_speed = 0        # current motor speed by pwm 0 ~ 2700
         self.cur_rotation = 0               # current rotation
@@ -137,6 +143,10 @@ class Controller:
                 0x00,       # current car speed km/h
                 0x00, 0x00, 0x00, 0x00, 0x00        # none
                 ]
+        self.rx_data_rotation = [
+                0x00, 0x00, # car rotation
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00        # none
+                ]
 
         self.set_acc_time(self.acc_time)
         self.set_forward()
@@ -157,7 +167,7 @@ class Controller:
         self.max_speed = max_speed
         
     def set_max_rotation(self, max_rotation):
-        self.max_rotation = min(580, max(0, max_rotation))
+        self.max_rotation = min(500, max(0, max_rotation))
 
     # acc 0.2~25.5s
     def set_acc_time(self, acc_time):
@@ -191,8 +201,14 @@ class Controller:
     def set_rotation(self, rotation):
         rotation = max(-1.0, min(rotation, 1.0))
         rotation = int(self.max_rotation * rotation)
+        self.raw_rotation = rotation
+        symbol = 0
+        if(rotation < 0):
+            symbol = 1
+            rotation = -rotation
+            rotation = (rotation ^ 0xffff) + 1
         self.cmd_data[5] = rotation & 0xff
-        self.cmd_data[6] = (rotation & 0xff00) >> 8
+        self.cmd_data[6] = ((rotation & 0xff00) >> 8) | (symbol << 7)
 
     def get_max_speed(self):
         return self.max_speed
@@ -216,7 +232,7 @@ class Controller:
         return self.cmd_data[1] + self.cmd_data[2] << 8
 
     def get_cmd_rotation(self):
-        return self.cmd_data[5] + self.cmd_data[6] << 8
+        return self.raw_rotation
 
     def get_cmd_reversed(self):
         return self.has_reversed
@@ -255,9 +271,11 @@ class Controller:
         return self.sensor_data
 
     def unpack(self):
-        self.cur_motor_pwm_speed = self.rx_data_low[1] << 8 + self.rx_data_low[0]        
-        self.cur_rotation = self.rx_data_low[2]  
-        self.cur_rotation = -self.cur_rotation if bool(self.rx_data_low[3] & 0x80) else self.cur_rotation            
+        self.cur_motor_pwm_speed = (self.rx_data_low[1] << 8) + self.rx_data_low[0]  
+        self.cur_rotation = self.rx_data_rotation[0] + ((self.rx_data_rotation[1] & 0x7f) << 8)
+        if bool(self.rx_data_rotation[1] & 0x80):
+            self.cur_rotation -= 0x8000
+        self.cur_rotation = -self.cur_rotation                               
         self.cur_rot_error = bool(self.rx_data_low[4] & 0x01)          
         self.cur_ctr_error = bool(self.rx_data_low[4] & 0x02)          
         self.cur_battery_temperature = self.rx_data_low[5]    
@@ -304,29 +322,31 @@ class Controller:
             rx_msg = self.bus.recv()
             if rx_msg is not None:
                 if rx_msg.arbitration_id == RECEIVE_ID_LOW:
+                    # print("low receive")
                     self.rx_data_low = rx_msg.data
                     self.unpack()
                 elif rx_msg.arbitration_id == RECEIVE_ID_HIGH:
+                    # print("high receive")
                     self.rx_data_high = rx_msg.data
                     self.unpack()
-                else:
-                    print("Oh shit!!! Receive id：%x is wrong!!!" % rx_msg.arbitration_id)
+                elif rx_msg.arbitration_id == RECEIVE_ID_ROTATION:
+                    self.rx_data_rotation = rx_msg.data
+                    self.unpack()
             # if rx_msg is not None:
                 # print("rx: {}".format(rx_msg))
         print("Stopped receiving messages")
 
 
-
-
 if __name__ == "__main__":
     ctrl = Controller()
     ctrl.start()
-    ctrl.set_backward()
-    # ctrl.set_max_rotation(500)
+    ctrl.set_forward()
     ctrl.set_speed(0)
-    ctrl.set_acc_time(10)
-    print('rotation start',ctrl.get_cur_rotation())
-    ctrl.set_rotation(-0.5)
-    print('rotation changed',ctrl.get_cur_rotation())
-    time.sleep(1)
+    # ctrl.set_max_rotation(500)
+    # ctrl.set_speed(0)
+    ctrl.set_acc_time(1.0)
+    # print('rotation start',ctrl.get_cur_rotation())
+    ctrl.set_rotation(-0.9)
+    # print('rotation changed',ctrl.get_cur_rotation())
+    time.sleep(5)
     ctrl.stop_event()
