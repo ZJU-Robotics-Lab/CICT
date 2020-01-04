@@ -6,7 +6,6 @@ import platform
 import struct
 import serial
 from queue import Queue
-import can
 from can import BusABC, Message
 
 sys_type = platform.system()
@@ -92,13 +91,13 @@ class Controller:
             channel = channel, 
             baudrate = baudrate
         )
-
         self.send_id = send_id
         self.max_speed = 1000
         self.max_rotation = 500
         self.acc_time = 10
         self.raw_rotation = 0
-# message read from car
+
+        # message read from car
         self.cur_motor_pwm_speed = 0        # current motor speed by pwm 0 ~ 2700
         self.cur_rotation = 0               # current rotation
         self.cur_rot_error = False          # rotation EPS error
@@ -109,7 +108,8 @@ class Controller:
         self.cur_battery_power = 100        # 0 ~ 100%
         self.cur_motor_current = 0          # current of motor
         self.cur_speed = 0                  # current speed km/h
-        self.sensor_data = Queue(10)
+        
+        self.sensor_data = Queue(100)
         self.update_queue()
         self.has_reversed = False
         self.stop_send = threading.Event()
@@ -287,7 +287,8 @@ class Controller:
         self.update_queue()                  
     
     def update_queue(self):
-        self.sensor_data.queue.clear()
+        if not self.sensor_data.empty():
+            self.sensor_data.queue.clear()
         self.sensor_data.put(self.cur_motor_pwm_speed)
         self.sensor_data.put(self.cur_rotation)
         self.sensor_data.put(self.cur_rotation)
@@ -299,7 +300,6 @@ class Controller:
         self.sensor_data.put(self.cur_battery_power)
         self.sensor_data.put(self.cur_motor_current)
         self.sensor_data.put(self.cur_speed)
-
 
     def send(self):
         """The loop for sending."""
