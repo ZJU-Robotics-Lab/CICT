@@ -13,14 +13,14 @@ from controller import Controller
 if __name__ == '__main__':
     
     import cv2
-    sensor_dict = {'camera:0':None,
+    sensor_dict = {'camera':None,
+                   'lidar':None,
                    }
-    
-    ctrl = Controller()
     
     sm = SensorManager(sensor_dict)
     sm.init_all()
     
+    ctrl = Controller()
     ctrl.start()
     ctrl.set_forward()
     ctrl.set_speed(0)
@@ -28,10 +28,11 @@ if __name__ == '__main__':
     ctrl.set_rotation(-0.9)
     
     for _ in range(100):
-        img = sm['camera:0'].getImage()
+        img = sm['camera'].getImage()
         img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR);
         cv2.imshow('input_image', img)
         cv2.waitKey(30)
+        print(sm['lidar'].get())
         ctrl.set_speed(0)
         
     cv2.destroyAllWindows()

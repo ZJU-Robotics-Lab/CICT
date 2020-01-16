@@ -10,6 +10,7 @@
 from utils import debug, Singleton
 
 from robot_camera import Camera
+from LiDAR import LiDAR
 
 class SensorManager(Singleton):
     def __init__(self, param_dict):
@@ -25,8 +26,9 @@ class SensorManager(Singleton):
                 sensor = Camera()
                 self.sensor_dict[key] = sensor
             elif sensor_type == 'lidar':
-                pass
-                self.sensor_dict[key] = sensor_type
+                sensor = LiDAR()
+                sensor.start()
+                self.sensor_dict[key] = sensor
             elif sensor_type == 'imu':
                 pass
                 self.sensor_dict[key] = sensor_type
@@ -48,11 +50,11 @@ class SensorManager(Singleton):
 
     def close_all(self):
         for key in self.param_dict:
-            try:
+            #try:
                 self.sensor_dict[key].close()
                 debug(info=str(key)+' closed', info_type='success')
-            except:
-                debug(info=str(key)+' has no attribute called \'close\'', info_type='message')
+            #except:
+                #debug(info=str(key)+' has no attribute called \'close\'', info_type='message')
         
     def __del__(self):
         pass

@@ -67,9 +67,16 @@ class LiDAR:
         self.stop_read_event.clear()
         self.read_cyclic.start()
         
-    def stop(self):
+    def close(self):
         self.stop_read_event.set()
-        self.soc.close()
+        if self.soc is not None:
+            self.soc.close()
+            
+    def get(self):
+        if not self.data_queue.empty():
+            return self.data_queue.get()
+        else:
+            return None
         
     def clear(self):
         self.data_queue.queue.clear()
@@ -195,7 +202,7 @@ class Visualizer(object):
         if (sys.flags.interactive != 1) or not hasattr(QtCore, 'PYQT_VERSION'):
             QtGui.QApplication.instance().exec_()
             
-    def stop(self):
+    def close(self):
         QtGui.QApplication.instance().quit()
 
     def set_plotdata(self, points, color):
@@ -240,5 +247,5 @@ if __name__ == '__main__':
     v = Visualizer(lidar.data_queue)
     # it will block here and not stop
     v.animation()
-    v.stop()
-    lidar.stop()
+    v.close()
+    lidar.close()
