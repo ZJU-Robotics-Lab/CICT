@@ -1,5 +1,5 @@
 #!/bin/bash
-OPTIONS="cmake git opencv pybind camera quit"
+OPTIONS="cmake git opencv pybind camera py-3rdparty quit"
 select opt in $OPTIONS; do
 	if [ "$opt" = "cmake" ]; then
 		sudo apt-get install cmake
@@ -38,6 +38,9 @@ select opt in $OPTIONS; do
 		sudo make install
 		cd ..
 
+	elif [ "$opt" = "py-3rdparty" ]; then
+		pip install -r requirements.txt
+		
 	elif [ "$opt" = "quit" ]; then
 		exit
 

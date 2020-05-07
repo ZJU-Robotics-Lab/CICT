@@ -19,15 +19,15 @@ if __name__ == '__main__':
     
     sm = SensorManager(sensor_dict)
     sm.init_all()
-    
+
     ctrl = Controller()
     ctrl.start()
     ctrl.set_forward()
     ctrl.set_speed(0)
     ctrl.set_acc_time(1.0)
     ctrl.set_rotation(-0.9)
-    
-    for _ in range(100):
+
+    for _ in range(500):
         img = sm['camera'].getImage()
         img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR);
         cv2.imshow('input_image', img)

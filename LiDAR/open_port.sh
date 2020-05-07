@@ -1,2 +1,2 @@
 sudo ufw enable
-ufw allow 2368
+sudo ufw allow 2368
