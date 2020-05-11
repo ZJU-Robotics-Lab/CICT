@@ -50,14 +50,14 @@ class SensorManager(Singleton):
 
     def close_all(self):
         for key in self.param_dict:
-            #try:
+            try:
                 self.sensor_dict[key].close()
                 debug(info=str(key)+' closed', info_type='success')
-            #except:
-                #debug(info=str(key)+' has no attribute called \'close\'', info_type='message')
+            except:
+                debug(info=str(key)+' has no attribute called \'close\'', info_type='message')
         
     def __del__(self):
-        pass
+        self.close_all()
     
 	# get sensor instance
     def __getitem__(self, key):

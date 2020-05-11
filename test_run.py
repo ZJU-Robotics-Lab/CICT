@@ -14,7 +14,7 @@ if __name__ == '__main__':
     
     import cv2
     sensor_dict = {'camera':None,
-                   'lidar':None,
+                   #'lidar':None,
                    }
     
     sm = SensorManager(sensor_dict)
@@ -32,7 +32,7 @@ if __name__ == '__main__':
         img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR);
         cv2.imshow('input_image', img)
         cv2.waitKey(30)
-        print(sm['lidar'].get())
+        #print(sm['lidar'].get())
         ctrl.set_speed(0)
         
     cv2.destroyAllWindows()

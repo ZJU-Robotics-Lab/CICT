@@ -31,7 +31,7 @@ select opt in $OPTIONS; do
 			mkdir 3rdparty
 		fi
 		cd 3rdparty
-		git clone https://github.com/slightech/MYNT-EYE-D-SDK.git
+		git clone https://github.com/IamWangYunKai/MYNT-EYE-D-SDK.git
 		cd MYNT-EYE-D-SDK
 		make init
 		make all -j16
