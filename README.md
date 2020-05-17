@@ -52,7 +52,7 @@ python xbox.py
 - [ ] Visualization interface merge, including 3D LiDAR, camera, GPS, robot velocity, rotation and battery percentage. Independent program with UDP communication may work well.
 - [ ] Offline map with GPS calibration, and online navigation system like smart phone app (input GPS and output navigation map).
 - [ ] LiDAR and camera external parameter calibration
-- [ ] IPC code deployment
+- [x] IPC code deployment
 - [ ] Finish sensor_manager.py and collect new data with RoBoCar.
 - [ ] Deep learning code deployment
 
