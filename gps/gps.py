@@ -22,10 +22,14 @@ class GPS():
         latitude,longtitude = self.parseGPS(data)
     
     def parseGPS(self, line):
-        data = line.split(',')
-        #print(data)
-        latitude = data[2]	
-        longtitude = data[4]
+        try:
+            data = line.split(',')
+            #print(data)
+            latitude = data[2]	
+            longtitude = data[4]
+        except:
+            print('Error when parse GPS:', data)
+            
         #num_star = data[7]
         #hdop = data[8]
         #convert degree+minute to degree
