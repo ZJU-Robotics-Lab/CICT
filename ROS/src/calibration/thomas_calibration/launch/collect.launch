@@ -1,0 +1,9 @@
+<launch>
+  <node pkg="thomas_calibration" type="cameracalibrator.py" name="camera_calibrator" args="--size 7x6 --square 0.1 --approximate 0.1" output="screen">
+    <remap from="left" to="/mynteye/left/image_color"/>
+    <remap from="right" to="/mynteye/right/image_color"/>
+    <remap from="left_camera" to="/mynteye/left/image_color"/>
+    <remap from="right_camera" to="/mynteye/right/image_color"/>
+    <remap from="laser" to="/velodyne_points"/>
+  </node>
+</launch>
