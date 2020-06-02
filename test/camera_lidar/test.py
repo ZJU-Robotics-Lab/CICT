@@ -152,8 +152,6 @@ point_cloud = np.dot(pitch_rotationMat, point_cloud)
 rotationMat = np.dot(rotationMat, np.linalg.inv(pitch_rotationMat))
 translationMat = np.dot(translationMat, np.linalg.inv(pitch_rotationMat))
 
-intensity = [100]*1000000
-
 def lidar2camera(point_cloud, rotationMat, translationMat):
     trans_pc = np.dot(rotationMat, point_cloud) + np.tile(translationMat, (point_cloud.shape[1], 1)).T
 
@@ -169,7 +167,7 @@ def lidar2camera(point_cloud, rotationMat, translationMat):
         point = (int(image_uv[0][i]), int(image_uv[1][i]))
         if point[0] > width or point[0] < 0 or point[1] > height or point[1] < 0:
             continue
-        if intensity[i] < 1: continue
+        if intensity[i] < 10: continue
         cv2.circle(img, point, point_size, ((100.-intensity[i])*0.01*255, 0, intensity[i]*0.01*255), thickness)
 
     cv2.imwrite('merge_'+index+'.png',img) 
@@ -192,7 +190,9 @@ image_uv = np.array([
         ])
 
 z0 = -1.55
+
 def camera2lidar(image_uv):
+    global intensity
     rotation = np.linalg.inv(np.dot(cameraMat, rotationMat))
     translation = np.dot(cameraMat, translationMat)
     translation = np.dot(rotation, translation)
@@ -212,12 +212,63 @@ def camera2lidar(image_uv):
             [z0]*image_uv.shape[1]
             ])
     #return trans_pc
-    trans_pc = np.hstack((trans_pc,point_cloud))
-    data_queue = Queue(10)
-    data_queue.put(trans_pc.T)
-    v = Visualizer(data_queue)
-    v.animation()
+    #trans_pc = np.hstack((trans_pc,point_cloud))
+    
+    return trans_pc
+    #data_queue = Queue(10)
+    #data_queue.put(trans_pc.T)
+    #v = Visualizer(data_queue)
+    #v.animation()
+    
+    
+pix_width = 0.05
+map_x_min = -2.0
+map_x_max = 10.0
+map_y_min = -10.0
+map_y_max = 10.0
+lim_z = -1.5
+        
+def get_cost_map(trans_pc, point_cloud):
+    width = int((map_x_max-map_x_min)/pix_width)
+    height = int((map_y_max-map_y_min)/pix_width)
+    img = np.zeros((width,height,1), np.uint8)
+    img.fill(127)
+    
+    x = []
+    y = []
+          
+    for i in range(point_cloud.shape[1]):
+        if point_cloud[2][i] < lim_z or point_cloud[0][i] < map_x_min or point_cloud[0][i] > map_x_max or point_cloud[1][i] < map_y_min or point_cloud[1][i] > map_y_max:
+            continue
+        u = -int((point_cloud[0][i]-map_x_min)/pix_width) #+ int(width/2)
+        v = -int((point_cloud[1][i]-map_y_min)/pix_width) #+ int(height/2)
+        img[u][v] = 0
 
+        x.append(u)
+        y.append(v)
+        
+    kernel = np.ones((5,5),np.uint8)  
+    img = cv2.erode(img,kernel,iterations = 1)
+    #cv2.imshow('image', img)    
+    for i in range(trans_pc.shape[1]):
+        if trans_pc[0][i] < map_x_min or trans_pc[0][i] > map_x_max or trans_pc[1][i] < map_y_min or trans_pc[1][i] > map_y_max:
+            continue
+        u = -int((trans_pc[0][i]-map_x_min)/pix_width)# + int(width/2)
+        v = -int((trans_pc[1][i]-map_y_min)/pix_width)# + int(height/2)
+        img[u][v] = 255
 
+        x.append(u)
+        y.append(v)
+        
+        
+    #kernel_size = (3, 3)
+    #sigma = 15
+    #img = cv2.GaussianBlur(img, kernel_size, sigma)
+    cv2.imshow('image', img)  
+
+    cv2.waitKey(0)
+    cv2.destroyAllWindows()
+    
+    
 trans_pc = camera2lidar(image_uv)
-#lidar2camera(trans_pc, rotationMat, translationMat)
+get_cost_map(trans_pc, point_cloud)
