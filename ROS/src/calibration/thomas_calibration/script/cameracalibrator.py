@@ -103,6 +103,7 @@ class CalibrationNode:
             # assume any non-default service names have been set.  Wait for the service to become ready
             for svcname in ["camera", "left_camera", "right_camera"]:
                 remapped = rospy.remap_name(svcname)
+                """
                 if remapped != svcname:
                     fullservicename = "%s/set_camera_info" % remapped
                     print("Waiting for service", fullservicename, "...")
@@ -112,6 +113,7 @@ class CalibrationNode:
                     except rospy.ROSException:
                         print("Service not found")
                         rospy.signal_shutdown('Quit')
+                """
 
         self._boards = boards
         self._calib_flags = flags
@@ -128,14 +130,14 @@ class CalibrationNode:
 
         msub = message_filters.Subscriber('image', sensor_msgs.msg.Image)
         msub.registerCallback(self.queue_monocular)
-        
+        """
         self.set_camera_info_service = rospy.ServiceProxy("%s/set_camera_info" % rospy.remap_name("camera"),
                                                           sensor_msgs.srv.SetCameraInfo)
         self.set_left_camera_info_service = rospy.ServiceProxy("%s/set_camera_info" % rospy.remap_name("left_camera"),
                                                                sensor_msgs.srv.SetCameraInfo)
         self.set_right_camera_info_service = rospy.ServiceProxy("%s/set_camera_info" % rospy.remap_name("right_camera"),
                                                                 sensor_msgs.srv.SetCameraInfo)
-
+        """
         self.q_mono = deque([], 1)
         self.q_stereo = deque([], 1)
 
@@ -199,7 +201,8 @@ class CalibrationNode:
 
             cloud_gen = pc2.read_points(vmsg)
             cloud = numpy.array(list(cloud_gen))
-            numpy.savetxt("cloud_%02d.pcd" % self.save_counter, cloud, fmt="%.7f %.7f %.7f %d %d", header="VERSION 0.7\nFIELDS x y z intensity ring\nSIZE 4 4 4 4 4\ntype F F F I I\nWIDTH %d\nHEIGHT %d\nVIEWPOINT 0 0 0 1 0 0 0\nPOINTS %d\nDATA ascii" % (cloud.shape[0], cloud.shape[1], cloud.shape[0] * cloud.shape[1]), comments="")
+            # print(cloud.shape, cloud[0])
+            numpy.savetxt("cloud_%02d.pcd" % self.save_counter, cloud, fmt="%.7f %.7f %.7f %.7f %.7f %.7f", header="VERSION 0.7\nFIELDS x y z intensity ring\nSIZE 4 4 4 4 4\ntype F F F I I\nWIDTH %d\nHEIGHT %d\nVIEWPOINT 0 0 0 1 0 0 0\nPOINTS %d\nDATA ascii" % (cloud.shape[0], cloud.shape[1], cloud.shape[0] * cloud.shape[1]), comments="")
 
             self.save_counter += 1
             
@@ -225,6 +228,7 @@ class CalibrationNode:
         info = self.c.as_message()
 
         rv = True
+        """
         if self.c.is_mono:
             response = self.set_camera_info_service(info)
             rv = self.check_set_camera_info(response)
@@ -233,6 +237,7 @@ class CalibrationNode:
             rv = rv and self.check_set_camera_info(response)
             response = self.set_right_camera_info_service(info[1])
             rv = rv and self.check_set_camera_info(response)
+        """
         return rv
 
 

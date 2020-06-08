@@ -41,9 +41,9 @@
     device_all:   left_color ✓ right_color ? depth ✓
   Note: ✓: available, x: unavailable, ?: depends on #stream_mode
   -->
-  <arg name="dev_mode" default="$(arg device_all)" />
+  <arg name="dev_mode" default="$(arg device_color)" />
 
-  <arg name="color_mode" default="$(arg color_raw)" />
+  <arg name="color_mode" default="$(arg color_rectified)" />
   <!-- Note: must set DEPTH_RAW to get raw depth values for points -->
   <arg name="depth_mode" default="$(arg depth_raw)" />
   <arg name="stream_mode" default="$(arg stream_2560x720)" />

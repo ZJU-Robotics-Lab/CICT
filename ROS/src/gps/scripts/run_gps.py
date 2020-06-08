@@ -7,83 +7,23 @@ import numpy as np
 import rospy
 from std_msgs.msg import String
 from rospy.numpy_msg import numpy_msg
-from rospy_tutorials.msg import Floats
-
-class Filter():
-    def __init__(self):
-        self.v = 0.0
-        self.yaw = 0.0
-
-        self.x = 0.0
-        self.y = 0.0
-        self.last_t = time.time()
-        self.cnt = 0
-        self.INIT_STEPS = 50
-        self.ALPHA = 0.2
-        self.MAX_V = 15.0
-        
-        self.x_his = []
-        self.y_his = []
-        
-        self.x_bias = 0.0
-        self.y_bias = 0.0
-        
-    
-    def dist(self, x, y):
-        return math.sqrt((self.x-x)**2 + (self.y-y)**2)
-        
-    def step(self, x, y):
-        if self.cnt >= self.INIT_STEPS:
-            x = x - self.x_bias
-            y = y - self.y_bias
-            
-        self.cnt += 1
-        now = time.time()
-
-        d = self.dist(x, y)
-        dt = now - self.last_t
-        if dt < 0.0001: dt = 0.1
-        v = d/dt
-        
-        if self.cnt < self.INIT_STEPS-10:
-            self.x = (1-self.ALPHA)*self.x + self.ALPHA*x
-            self.y = (1-self.ALPHA)*self.y + self.ALPHA*y
-            self.x_bias = self.x
-            self.y_bias = self.y
-            
-        elif self.cnt < self.INIT_STEPS:
-            self.x = (1-self.ALPHA)*self.x + self.ALPHA*x
-            self.y = (1-self.ALPHA)*self.y + self.ALPHA*y
-            self.x_his.append(x)
-            self.y_his.append(y)
-        else:
-            if v > self.MAX_V:
-                self.x = self.x + math.cos(self.yaw)*self.v*dt
-                self.y = self.y + math.sin(self.yaw)*self.v*dt
-            else:
-                self.v = (1-self.ALPHA)*self.v + self.ALPHA*v
-                self.x = x
-                self.y = y
-                
-                self.yaw = math.atan2((y-self.y_his[5]), (x-self.y_his[5]))
-        
-            self.x_his.pop(0)
-            self.y_his.pop(0)
-            self.x_his.append(self.x)
-            self.y_his.append(self.y)
-            self.last_t = now
-        
-        return self.x, self.y, self.v
+#from rospy_tutorials.msg import Floats
     
 class GPS():
     def __init__(self, port = '/dev/ttyUSB0'):
         self.serial = None
         self.port = port
-        self.filter = Filter()
     
     def start(self):
         try:
             self.serial = serial.Serial(self.port, 115200)
+            if self.serial is not None:
+                print("Open serial port successfully !")
+
+            #self.serial.write(b'reset\r\n')
+            #self.serial.write(b'com trans com2 gnsscom2\r\n')
+            #self.serial.write(b'gpgga 0.1\r\n')
+
         except:
             print('Error when open GPS')
     
@@ -94,8 +34,8 @@ class GPS():
         data = self.serial.readline()
         while data[:6] != '$GPGGA':
             data = self.serial.readline()
-        x, y, v = self.parseGPS(data)
-        return x, y, v
+        parsed_data = self.parseGPS(data)
+        return parsed_data
     
     def parseGPS(self, line):
         try:
@@ -116,12 +56,11 @@ class GPS():
             long_minute = longtitude[3:]
             longtitude = float(long_degree) + float(long_minute)/60
             
-            x, y = self.gps2xy(self, latitude, longtitude)
-            filter_x, filter_y, filter_v = self.filter.step(x, y)
-            return filter_x, filter_y, filter_v
+            x, y = self.gps2xy(latitude, longtitude)
+            return str(x)+'\t'+str(y)+'\n'
         except:
-            #print('Error when parse GPS:', data)
-            return 0.0, 0.0
+            print('Error when parse GPS:', data)
+            return None
         
     
     def gps2xy(self, latitude, longtitude):
@@ -157,12 +96,15 @@ class GPS():
     	return xc,yc
     
 if __name__ == '__main__':
-    gps = GPS()
+    gps = GPS('/dev/ttyUSB1')
     gps.start()
-    pub = rospy.Publisher('gps', numpy_msg(Floats))
+    pub = rospy.Publisher('gps', String, queue_size=1)
     rospy.init_node('talker', anonymous=True)
     while True:
-        x, y, v = gps.get()
-        array = np.array([x, y, v], dtype=np.float32)
-        pub.publish(array)
+        data = gps.get()
+        if data == None:
+            continue
+        print(data)
+        #array = np.array(data, dtype=np.float64)
+        pub.publish(data)
         
