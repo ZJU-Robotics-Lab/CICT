@@ -2,38 +2,6 @@ import math
 import time
 from PIL import Image, ImageDraw
 import matplotlib.pyplot as plt
-def gps2xy(latitude, longtitude):
-    
-    	#remain to be done!!! figure out the formula meanings!!!
-    	latitude = latitude * math.pi/180
-    	longtitude = longtitude *math.pi/180
-    
-    	#the radius of the equator
-    	radius = 6378137
-    	#distance of the two poles
-    	distance = 6356752.3142
-    	#reference??
-    	base = 30 * math.pi/180
-    	
-    	radius_square = pow(radius,2)
-    	distance_square = pow(distance,2)
-    	
-    	e = math.sqrt(1 - distance_square/radius_square)
-    	e2 = math.sqrt(radius_square/distance_square - 1)
-    
-    	cosb0 = math.cos(base)
-    	N = (radius_square / distance) / math.sqrt( 1+ pow(e2,2)*pow(cosb0,2))
-    	K = N*cosb0
-    	
-    	sinb = math.sin(latitude)
-    	tanv = math.tan(math.pi/4 + latitude/2)
-    	E2 = pow((1 - e*sinb) / (1+ e* sinb),e/2)
-    	xx = tanv * E2;
-    	
-    	xc = K * math.log(xx)
-    	yc = K * longtitude
-    	return xc,yc
-
 
 
 def avg(values):
@@ -42,12 +10,10 @@ def avg(values):
   
 def normal(values, is_y=False):
     avg_value = values[0]
-
     if is_y:
         avg_value = (11589596.333751025+11589605.59585501)/2
     else:
         avg_value = (3047362.377753752+3047362.981469983)/2
-    #return [(item - avg_value)/(max_v - min_v) for item in values]
     return [(item - avg_value) for item in values]
    
 
@@ -62,7 +28,7 @@ class Filter():
         self.cnt = 0
         self.INIT_STEPS = 50
         self.ALPHA = 0.2
-        self.MAX_V = 15.0
+        self.MAX_V = 50.0
         
         self.x_his = []
         self.y_his = []
@@ -123,31 +89,24 @@ scale_y = 6.0
 x_offset = 3300
 y_offset = 2600
         
-latitudes = []
-longtitudes = []
-with open('gps_log2.txt', 'r') as file:
+xs = []
+ys = []
+ts = []
+with open('./gps2/gps.txt', 'r') as file:
     lines = file.readlines()
     for line in lines:
         try:
             sp_line = line.split()
-            latitude = float(sp_line[0])
-            longtitude = float(sp_line[1])
-            latitudes.append(latitude)
-            longtitudes.append(longtitude)
+            timestamp = float(sp_line[0])
+            data = sp_line[2][1:-3].split('\\t')
+            x = float(data[0])
+            y = float(data[1])
+            xs.append(x)
+            ys.append(y)
+            ts.append(timestamp)
         except:
             pass
-
-
-xs = []
-ys = []
-for i in range(len(latitudes)):
-    latitude = latitudes[i]
-    longtitude = longtitudes[i]
-    x,y = gps2xy(latitude, longtitude)
-    xs.append(x)
-    ys.append(y)
-
-    
+        
 nx = normal(xs)
 ny = normal(ys, True)
 
@@ -156,40 +115,83 @@ fter_x = []
 fter_y = []
 fter_v = []
 
+manual_gps_y = [2400, 2300, 3815, 3630, 3325, 3240, 2855, 2570, 2420, 2465, 2115, 2260, 2095, 2075, 2200, 1655, 1820, 2605, 2460]
+manual_gps_x = [3200, 3430, 4000, 4520, 4400, 4600, 4665, 4555, 4240, 4090, 3970, 3555, 3490, 3395, 3055, 2820, 2335, 2615, 3045]
+
+def find_nn(x, y):
+    gps_y = []
+    gps_x = []
+    
+
 
 for i in range(len(nx)):
     x, y, v = fter.step(nx[i], ny[i])
-
     _x = -x*scale_x  + x_offset
     _y = y*scale_y  + y_offset
     fter_x.append(_x)
     fter_y.append(_y)
     fter_v.append(v)
 
-img = Image.open('map2.png')
+start = 1000#4200#700
+end = -3000#-1400#-3000
+img = Image.open('map-mark.png')
 fig,ax = plt.subplots(figsize=(15, 15))
-#ax.imshow(img)
-#plt.plot(fter_y,fter_x,'xkcd:black',linewidth=1)
+#plt.plot(fter_y[start:end],fter_x[start:end],'xkcd:red',linewidth=4)
+plt.plot(manual_gps_y,manual_gps_x,'xkcd:blue',linewidth=5)
 plt.axis('off')
-#fig.savefig('out2.pdf', bbox_inches='tight', dpi=1000)
 plt.tight_layout()
+#img2 = img.crop((2390-800, 3270-1000, 2390+1500, 3270+1500))
+ax.imshow(img)
+#fig.savefig('out5.pdf', bbox_inches='tight', dpi=1000)
+"""
+for i in range(start, len(fter_x)+end-15):
+    draw = ImageDraw.Draw(img)
+    draw.line((fter_y[i], fter_x[i], fter_y[i+2], fter_x[i+2]), 'red', width=1)
 
+ax.imshow(img)
+fig.savefig('out6.pdf', bbox_inches='tight', dpi=1000)
+"""
 def get_nav(img, angle, index=0):
     size_y = 800
     size_x = 400
     r=10
     img2 = img.crop((fter_y[index]-size_y, fter_x[index]-size_x, fter_y[index]+size_y, fter_x[index]+size_x))
-    drawObject = ImageDraw.Draw(img2)
-    drawObject.ellipse((img2.size[0]//2,img2.size[1]//2,img2.size[0]//2+r,img2.size[1]//2+r),fill="red")
+    #drawObject = ImageDraw.Draw(img2)
+    #drawObject.ellipse((img2.size[0]//2,img2.size[1]//2,img2.size[0]//2+r,img2.size[1]//2+r),fill="red")
     im_rotate = img2.rotate(angle)
-    size_y2 = 300
-    size_x2 = 150
+    size_y2 = 100#300
+    size_x2 = 50#150
     img3 = im_rotate.crop((img2.size[0]//2-size_y2, img2.size[1]//2-size_x2, img2.size[0]//2+size_y2, img2.size[1]//2+size_x2))
     #ax.imshow(img3)
-    img3.save('images/'+str(index)+'.png')
+    img3.save('output2/'+str(ts[index])+'.png')
 
-for i in range(800, len(fter_x)-10):
-    dy = fter_y[(i+15)%len(fter_y)] - fter_y[i]
-    dx = fter_x[(i+15)%len(fter_x)] - fter_x[i]
-    angel = 180.*math.atan2(dy, dx)/math.pi
-    get_nav(img, -angel+180, i)
+"""
+i=start
+dy = (fter_y[i+6] - fter_y[i+3]) + (fter_y[i+5] - fter_y[i+2]) + (fter_y[i+4] - fter_y[i+1]) + (fter_y[i+3] - fter_y[i])
+dx = (fter_x[i+6] - fter_x[i+3]) + (fter_x[i+5] - fter_x[i+2]) + (fter_x[i+4] - fter_x[i+1]) + (fter_x[i+3] - fter_x[i])
+last_angle = 180.*math.atan2(dy, dx)/math.pi
+
+def angle_normal(angle):
+    while angle < -180. or angle > 180.:
+        if angle < -180.:
+            angle += 180.
+        elif angle > 180.:
+            angle -= 180.
+    return angle
+
+total = len(fter_x)+end-6-start
+for i in range(start, len(fter_x)+end-6):
+    dy = (fter_y[i+4] - fter_y[i+0]) + (fter_y[i+3] - fter_y[i-1]) + (fter_y[i+2] - fter_y[i-2]) + (fter_y[i+1] - fter_y[i-3])
+    dx = (fter_x[i+4] - fter_x[i+0]) + (fter_x[i+3] - fter_x[i-1]) + (fter_x[i+2] - fter_x[i-2]) + (fter_x[i+1] - fter_x[i-3])
+    angle = 180.*math.atan2(dy, dx)/math.pi
+
+    if dy == 0.0 or dx == 0.0:
+        input_angle = last_angle
+    else:
+        input_angle = 0.8*last_angle+0.2*angle
+        last_angle = input_angle
+    get_nav(img, -input_angle+180., i)
+    
+    if (i-start) % (total//100) == 0:
+        print(str(round(100*(i-start)/total, 1))+'%')
+"""
