@@ -1,8 +1,7 @@
 import rosbag
 import rospy
 import cv2
-from cv_bridge import CvBridge
-from cv_bridge import CvBridgeError
+from cv_bridge import CvBridge, CvBridgeError
 
 img_path = '/home/wang/DataSet/yqdata/images2/'
 gps_path = '/home/wang/DataSet/yqdata/gps2/'

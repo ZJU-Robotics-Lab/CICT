@@ -170,7 +170,7 @@ print(theta_x*180./np.pi, theta_y*180./np.pi, theta_z*180./np.pi)
 
 point_cloud = np.dot(pitch_rotationMat, point_cloud)
 rotationMat = np.dot(rotationMat, np.linalg.inv(pitch_rotationMat))
-translationMat = np.dot(translationMat, np.linalg.inv(pitch_rotationMat))
+#translationMat = np.dot(translationMat, np.linalg.inv(pitch_rotationMat))
 
     
 def lidar2camera(point_cloud, rotationMat, translationMat):
@@ -187,12 +187,12 @@ def lidar2camera(point_cloud, rotationMat, translationMat):
         point = (int(image_uv[0][i]), int(image_uv[1][i]))
         if point[0] > width or point[0] < 0 or point[1] > height or point[1] < 0:
             continue
-        if intensity[i] < 10: continue
+        if intensity[i] < 5: continue
         cv2.circle(img, point, 1, ((100.-intensity[i])*0.01*255, 0, intensity[i]*0.01*255), 4)
 
     cv2.imwrite('merge_'+index+'.png',img) 
 
-
+lidar2camera(point_cloud, rotationMat, translationMat)
 ####################################
 
 x= []
