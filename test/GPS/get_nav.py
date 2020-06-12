@@ -28,7 +28,7 @@ class Filter():
         self.cnt = 0
         self.INIT_STEPS = 50
         self.ALPHA = 0.2
-        self.MAX_V = 50.0
+        self.MAX_V = 150.0
         
         self.x_his = []
         self.y_his = []
@@ -92,7 +92,7 @@ y_offset = 2600
 xs = []
 ys = []
 ts = []
-with open('./gps2/gps.txt', 'r') as file:
+with open('./gps3/gps.txt', 'r') as file:
     lines = file.readlines()
     for line in lines:
         try:
@@ -175,14 +175,14 @@ for index in range(11000, 13000):
     nn_x, nn_y, nn_index = find_nn(fter_x[index], fter_y[index], gps_x, gps_y)
     plt.plot([fter_y[index], nn_y], [fter_x[index], nn_x],'xkcd:blue',linewidth=2)
 """
-#plt.plot(fter_y[start:end],fter_x[start:end],'xkcd:red',linewidth=4)
-#plt.plot(gps_y,gps_x,'xkcd:green',linewidth=4)
+plt.plot(fter_y[start:end],fter_x[start:end],'xkcd:red',linewidth=4)
+plt.plot(gps_y,gps_x,'xkcd:green',linewidth=4)
 #plt.plot(manual_gps_y,manual_gps_x,'xkcd:blue',linewidth=5)
 plt.axis('off')
 plt.tight_layout()
 #img2 = img.crop((2390-800, 3270-1000, 2390+1500, 3270+1500))
 #ax.imshow(img)
-#fig.savefig('out5.pdf', bbox_inches='tight', dpi=1000)
+fig.savefig('out9.pdf', bbox_inches='tight', dpi=1000)
 """
 for i in range(start, len(fter_x)+end-15):
     draw = ImageDraw.Draw(img)
@@ -219,7 +219,7 @@ def angle_normal(angle):
         elif angle > 180.:
             angle -= 180.
     return angle
-
+"""
 total = len(fter_x)+end-6-start
 for i in range(start, len(fter_x)+end-6):
     nn_x, nn_y, nn_index = find_nn(fter_x[i], fter_y[i], gps_x, gps_y)
@@ -227,10 +227,11 @@ for i in range(start, len(fter_x)+end-6):
     dx = (gps_x[nn_index+1] - gps_x[nn_index])
     angle = 180.*math.atan2(dy, dx)/math.pi
 
-    input_angle = 0.5*last_angle+0.5*angle
+    input_angle = 0.8*last_angle+0.2*angle
     last_angle = input_angle
     
     get_nav(img, -input_angle+180., i, nn_index)
     
     if (i-start) % (total//100) == 0:
         print(str(round(100*(i-start)/total, 1))+'%')
+"""
