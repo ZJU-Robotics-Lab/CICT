@@ -41,7 +41,7 @@ def read_gps(data_index=5):
 def get_points(key, num=300):
     global gps_info, keys
     assert len(keys) > 0
-    angle = get_filt_angle(key)#get_angle(key)
+    angle = get_filt_angle(key)
     
     index = keys.index(key)
     x = []
@@ -66,26 +66,24 @@ def get_angle(key):
     angle = np.arctan2(dy, dx)
     return angle
 
-def get_filt_angle(key, show=True):
+def get_filt_angle(key, show=False):
     global gps_info, keys
     index = keys.index(key)
     
     x = []
     y = []
     z = []
-    start = gps_info[key]#gps_info[keys[max(0, index-50)]]
+    start = gps_info[key]
     for i in range(200):
         data = gps_info[keys[max(0, index+i-100)]]
-        _x = (data[0]-start[0])
+        _x = data[0]-start[0]
         _y = data[1]-start[1]
         x.append(_x)
         y.append(_y)
         z.append(-1.8)
         
     point_cloud = np.array([x, y, z])
-    point_cloud = rm_noise(point_cloud)
-    
-    #chosen_point = [gps_info[key][0]-start[0], gps_info[key][1]-start[1]]
+
     chosen_point = [0, 0]
     head_x = point_cloud[0][0]
     head_y = point_cloud[1][0]
@@ -103,14 +101,7 @@ def get_filt_angle(key, show=True):
     fit_param = np.polyfit(point_cloud[0], point_cloud[1], 4)
     poly_func = np.poly1d(fit_param)
     fit_data = poly_func(point_cloud[0])
-    """
-    if show:
-        fig,ax = plt.subplots(figsize=(15, 15))
-        plt.scatter(point_cloud[0],fit_data)
-        #plt.scatter(point_cloud[0],point_cloud[1])
-        plt.plot(point_cloud[0],point_cloud[1],'xkcd:green',linewidth=4)
-        plt.show()
-    """    
+   
     point_cloud = np.array([point_cloud[0], fit_data, point_cloud[2]])
     # rotate point_cloud
     point_cloud = np.dot(np.linalg.inv(rot_mat), point_cloud)

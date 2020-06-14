@@ -69,18 +69,14 @@ rotationMat = np.dot(rotationMat, np.linalg.inv(pitch_rotationMat))
 
 def lidar2camera(img, point_cloud, rotationMat=rotationMat, translationMat=translationMat, file_name='merge'):
     trans_pc = np.dot(rotationMat, point_cloud) + np.tile(translationMat, (point_cloud.shape[1], 1)).T
-
     image_uv = np.array([
             trans_pc[0]*fx/trans_pc[2] + x0,
             trans_pc[1]*fy/trans_pc[2] + y0
             ])
-    #print(image_uv)
-    
     total = image_uv.shape[1]
-    for i in range(image_uv.shape[1]):
+    for i in range(total):
         point = (int(image_uv[0][i]), int(image_uv[1][i]))
         if point[0] > width or point[0] < 0 or point[1] > height or point[1] < 0:
             continue
-        cv2.circle(img, point, 1, (i/total*255, 0, 255-i/total*255), 8)
-
+        cv2.circle(img, point, 2, (i/total*255, 0, 255-i/total*255), 8)
     cv2.imwrite('output/'+file_name+'.png',img)
