@@ -14,7 +14,8 @@ def read_gps(data_index=5):
     files = glob.glob('/home/wang/DataSet/yqdata/images'+str(data_index)+'/*.png')
     file_path = []
     for file in files:
-        ts = float(file.split('/')[6][:-4])
+        #ts = float(file.split('/')[6][:-4])
+        ts = file.split('/')[6][:-4]
         file_path.append(ts)
         
     file_path.sort()
@@ -24,7 +25,8 @@ def read_gps(data_index=5):
         for line in lines:
             try:
                 sp_line = line.split()
-                ts = float(sp_line[0])
+                #ts = float(sp_line[0])
+                ts = sp_line[0]
                 data = sp_line[2][1:-3].split('\\t')
                 x = float(data[0])
                 y = float(data[1])
