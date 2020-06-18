@@ -39,9 +39,9 @@ def read_icp_results(file_path):
             
     return icp_ts_list, trans_list, rotate_list
 
-def get_locations():
+def get_locations(data_index=6):
     global locations
-    ts_list, trans_list, rotate_list = read_icp_results('trajectory.txt')
+    ts_list, trans_list, rotate_list = read_icp_results('/media/wang/DATASET/icp'+str(data_index)+'/trajectory.txt')
     
     x = []
     y = []
@@ -87,10 +87,10 @@ def get_locations():
     
 def read_imgs(data_index=6):
     global icp_ts_list, img_ts_list, img_icp_ts_index
-    files = glob.glob('/home/wang/DataSet/yqdata/images'+str(data_index)+'/*.png')
+    files = glob.glob('/media/wang/DATASET/images'+str(data_index)+'/*.png')
     img_ts_list = []
     for file in files:
-        ts = file.split('/')[6][:-4]
+        ts = file.split('/')[5][:-4]
         img_ts_list.append(ts)
         
     img_ts_list.sort()

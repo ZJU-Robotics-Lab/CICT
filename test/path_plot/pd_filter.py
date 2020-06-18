@@ -61,9 +61,9 @@ def filt_pd(point_cloud, show=False):
 def fill_points(point_cloud):
     min_dist = 0.03
     path_width = 1.0
-    pc_x = [0]
-    pc_y = [0]
-    pc_z = [-1.8]
+    pc_x = []
+    pc_y = []
+    pc_z = []
     for i in range(len(point_cloud[0])-1):
         x = point_cloud[0][i]
         y = point_cloud[1][i]
