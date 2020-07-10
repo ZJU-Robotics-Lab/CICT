@@ -10,8 +10,12 @@ try:
     from pyquery import PyQuery as pq
 except:
     pass
+     
+USE_CUDA = False
+if USE_CUDA:
+    import torch
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-import velodyne
 
 HOST = '10.12.218.255'
 IP = '10.12.218.167'
@@ -21,6 +25,11 @@ RPM = '600'
 class LiDAR:
     def __init__(self, port=2368):
         self.PORT = port
+        self.NUM_LASERS = 16
+        self.LASER_ANGLES = [-15, 1, -13, 3, -11, 5, -9, 7, -7, 9, -5, 11, -3, 13, -1, 15]
+        self.DISTANCE_RESOLUTION = 0.002
+        self.ROTATION_MAX_UNITS = 36000
+        
         self.soc = None
         self.data_queue = Queue(1000)
         
@@ -30,9 +39,12 @@ class LiDAR:
             target=self.read_data, args=()
         )
         
-        self.points = None
+        self.points = []
         self.scan_index = 0 # cicle num
-
+        self.theta = 0
+        self.list_dis = []
+        self.list_theta = []
+        self.list_id = []
         self.set_param()
     
     def set_param(self, host = HOST, ip = IP, gateway = GATEWAY, rpm = RPM):
@@ -69,6 +81,41 @@ class LiDAR:
     def clear(self):
         self.data_queue.queue.clear()
         
+    def calc(self, dis, azimuth, laser_id):
+        dis = np.array(dis)
+        azimuth = np.array(azimuth)
+        R = dis * self.DISTANCE_RESOLUTION
+        omega = [self.LASER_ANGLES[item] * np.pi / 180.0 for item in laser_id]
+        alpha = azimuth / 100.0 * np.pi / 180.0
+        X = R * np.cos(omega) * np.sin(alpha)
+        Y = R * np.cos(omega) * np.cos(alpha)
+        Z = R * np.sin(omega)
+        _pts = np.dstack((X,Y))
+        pts = np.dstack((_pts,Z))[0]
+        return pts
+    
+    def calc_cuda(self, dis, azimuth, laser_id):
+        dis = np.array(dis)
+        dis = torch.from_numpy(dis).to(device)
+        
+        azimuth = np.array(azimuth)
+        azimuth = torch.from_numpy(azimuth).to(device)
+        
+        R = dis * self.DISTANCE_RESOLUTION
+        
+        omega = [self.LASER_ANGLES[item] * np.pi / 180.0 for item in laser_id]
+        omega = np.array(omega)
+        omega = torch.from_numpy(omega).to(device)
+        
+        alpha = azimuth / 100.0 * np.pi / 180.0
+        X = R * torch.cos(omega) * torch.sin(alpha)
+        Y = R * torch.cos(omega) * torch.cos(alpha)
+        Z = R * torch.sin(omega)
+        
+        _pts = torch.stack((X, Y), 1)
+        pts = torch.cat((_pts, Z.unsqueeze(-1)), 1)
+        return pts.cpu().numpy()
+    
     def read_data(self):
         while not self.stop_read_event.is_set():
             data = self.soc.recv(2000)
@@ -78,21 +125,48 @@ class LiDAR:
                 # main package
                 timestamp, factory = struct.unpack_from("<IH", data, offset=1200)
                 assert factory == 0x2237, hex(factory)  # 0x22=VLP-16, 0x37=Strongest Return
-                result = velodyne.parse_data(data[:1200])
-                intensity = result[:,3]
-                mask = np.where((intensity > 20))[0]
-                result = result[:,:3]
-                result = result[mask,:]
-                if self.points is None:
-                    self.points = result
-                else:
-                    self.points = np.concatenate((self.points, result), axis=0)
-                self.scan_index += 1
-                if self.scan_index >= 1800:
-                    self.scan_index = 0
-                    self.data_queue.put(self.points.copy())
-                    self.points = None
-     
+                seq_index = 0
+                for offset in range(0, 1200, 100):
+                    # 12 bags' head
+                    flag, theta = struct.unpack_from("<HH", data, offset)
+                    assert flag == 0xEEFF
+                    # 2*16 data
+                    for step in range(2):
+                        seq_index += 1
+                        theta += step*20
+                        if theta > self.ROTATION_MAX_UNITS:
+                            theta %= self.ROTATION_MAX_UNITS
+                            # one cicle finish
+                            self.scan_index += 1
+                            if self.data_queue.full():
+                                print('WARNNING: LiDAR data queue is FULL !')
+                                with self.data_queue.mutex:
+                                    self.data_queue.queue.clear()
+                            
+                            if USE_CUDA:
+                                self.points = self.calc_cuda(self.list_dis, self.list_theta, self.list_id)
+                            else:
+                                self.points = self.calc(self.list_dis, self.list_theta, self.list_id)
+                            self.data_queue.put(self.points)
+                            self.list_dis = []
+                            self.list_theta = []
+                            self.list_id = []
+                            self.points = []
+
+                        # H-distance (2mm step), B-reflectivity
+                        arr = struct.unpack_from('<' + "HB" * 16, data, offset + 4 + step * 48)
+                        for i in range(self.NUM_LASERS):
+                            #time_offset = (55.296 * seq_index + 2.304 * i) / 1000000.0
+                            #ts = timestamp + time_offset
+                            if arr[i * 2] != 0:
+                                #self.points.append(self.calc(arr[i * 2], theta, i))
+                                self.list_dis.append(arr[i * 2])
+                                self.list_theta.append(theta)
+                                self.list_id.append(i)
+
+            #self.points.append(self.calc(self.list_dis, self.list_theta, self.list_id))
+
+            
             
 class Visualizer(object):
     def __init__(self, data_queue):

@@ -98,8 +98,7 @@ class Controller:
         )
         self.send_id = send_id
         self.max_speed = 2700
-        self.min_rotation = 580
-        self.max_rotation = 1220
+        self.max_rotation = 700
         self.acc_time = 3
         self.raw_rotation = 0
 
@@ -206,7 +205,7 @@ class Controller:
     # input (-1, 1)
     def set_rotation(self, rotation):
         rotation = max(-1.0, min(rotation, 1.0))
-        rotation = int((self.max_rotation-self.min_rotation)/2.0 * rotation + self.min_rotation)
+        rotation = -int(self.max_rotation*rotation)
         self.raw_rotation = rotation
         symbol = 0
         if(rotation < 0):
