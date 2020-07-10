@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 import os
 import cv2
+import time
 import random
 import argparse
 import numpy as np
@@ -9,18 +10,13 @@ from PIL import Image
 from datetime import datetime
 
 import torch
-from torch.autograd import Variable
-from torch.utils.data import DataLoader
-from torch.utils.tensorboard import SummaryWriter
-from torchvision.utils import save_image
 import torchvision.transforms as transforms
-
-from models import GeneratorUNet, Discriminator
-from datasets import Yq21Dataset, Yq21Dataset_test, Yq21Dataset_eval
+from models import GeneratorUNet
 
 from sensor_manager import SensorManager
 from controller import Controller
-
+from local_planner import get_cost_map, get_cmd, read_pcd
+from camera_info import camera2lidar
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--epoch', type=int, default=0, help='epoch to start training from')
@@ -40,29 +36,30 @@ torch.manual_seed(999)
 torch.cuda.manual_seed(999)
 torch.set_num_threads(16)
 
-device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+#device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+device = torch.device('cpu')
 
 generator = GeneratorUNet()
-discriminator = Discriminator()
 
 generator = generator.to(device)
-generator.load_state_dict(torch.load('result/saved_models/graph/g_71000.pth'))
+generator.load_state_dict(torch.load('ckpt/g.pth'))
 generator.eval()
 
 img_trans_ = [
-        transforms.Resize((opt.img_height, opt.img_width), Image.BICUBIC),
-        transforms.ToTensor(),
-        transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
-                ]
-
+    transforms.Resize((opt.img_height, opt.img_width), Image.BICUBIC),
+    transforms.ToTensor(),
+    transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
+]
 img_trans = transforms.Compose(img_trans_)
 
 def get_img():
-    img = sm['camera'].getImage()
-    img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
-    
+    #img = sm['camera'].getImage()
+    img = cv2.imread("/media/wang/DATASET/images6/1592380358.292274.png")
+    img = Image.fromarray(cv2.cvtColor(img,cv2.COLOR_BGR2RGB))
+
     # TODO
-    nav = None
+    nav = cv2.imread("/media/wang/DATASET/nav6/1592380358.292274.png")
+    nav = Image.fromarray(cv2.cvtColor(nav,cv2.COLOR_BGR2RGB))
     
     img = img_trans(img)
     nav = img_trans(nav)
@@ -76,8 +73,33 @@ def get_net_result(input_img):
         input_img = input_img.to(device)
         result = generator(input_img)
         return result
-        
+
+theta_y = 20.0*np.pi/180.
+pitch_rotationMat = np.array([
+    [np.cos(theta_y),  0., np.sin(theta_y)],
+    [       0.,        1.,         0.     ],
+    [-np.sin(theta_y), 0., np.cos(theta_y)],
+])  
+    
+def inverse_perspective_mapping(img):
+    #29ms
+    point_cloud, intensity = read_pcd('/media/wang/DATASET/pcd6/1592380357.256119251.pcd')
+    point_cloud = np.dot(pitch_rotationMat, point_cloud)
+    #2.2 ms
+    img = cv2.resize(img, (1280, 720), interpolation=cv2.INTER_AREA)
+    res = np.where(img > 100)
+    image_uv = np.stack([res[1],res[0]])
+    #1.9 ms
+    trans_pc = camera2lidar(image_uv)
+    #2.2 ms
+    img = get_cost_map(trans_pc, point_cloud, False)
+    #2.1 ms
+    v, w = get_cmd(img, show=False)
+    #print(v, w)
+    
+
 if __name__ == '__main__':
+    """
     sensor_dict = {'camera':None,
                    'lidar':None,
                    }
@@ -87,8 +109,19 @@ if __name__ == '__main__':
     ctrl = Controller()
     ctrl.start()
     ctrl.set_forward()
-
+    """
     while True:
         input_img = get_img()
-        result = get_net_result(input_img)
-        
+        t1 = time.time()
+        result = get_net_result(input_img)[0][0]
+        result = result.cpu().data.numpy()*255+255
+        #img_gray = cv2.resize(result,(256*4, 128*4),interpolation=cv2.INTER_CUBIC)
+        #cv2.imshow("img_gray",img_gray)
+        #cv2.waitKey(0)
+        #cv2.destroyAllWindows()
+        t2 = time.time()
+        print('get_net_result', round(1000*(t2-t1),3), 'ms')
+        inverse_perspective_mapping(result)
+        t3 = time.time()
+        print('inverse_perspective_mapping', round(1000*(t3-t2)-29,3), 'ms')
+        break

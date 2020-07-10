@@ -15,7 +15,7 @@ from informer import Informer, config
 from sensor_manager import SensorManager
 from controller import Controller
 
-config.PUBLICT_IP = '127.0.0.1'#'47.100.46.11'
+config.PUBLICT_IP = '47.100.46.11'
 
 class RoboCar(Informer):
     def __init__(self, robot_id=None, block=True):
@@ -73,7 +73,7 @@ if __name__ == '__main__':
         img = sm['camera'].getImage()
         img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
         #img = cv2.resize(img, None, fx=0.5, fy=0.5, interpolation=cv2.INTER_AREA)
-        robot.send_vision(img, False)
+        robot.send_vision(img, True)
 
         # send robot sensors
         v = random.random()*5
@@ -81,6 +81,6 @@ if __name__ == '__main__':
         c = False if random.random() > 0.3 else True
         robot.send_sensor_data(v, w, c)
 
-        sleep(1/5.)
+        sleep(1/15.)
         
     sm.close_all()
