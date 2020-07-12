@@ -175,6 +175,9 @@ def scan_usb(device_type='CAN'):
             if device_type == 'CAN' and vid == 6790:
                 print('Found CAN Bus', name)
                 return name
+            if device_type == 'GPS' and vid == 1659:
+                print('Found GPS', name)
+                return name
     print('No serial port matches !',[device.name for device in port_list])
     return None
         

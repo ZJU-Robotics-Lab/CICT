@@ -3,6 +3,7 @@ from __future__ import print_function
 import math
 import time
 import serial
+import threading
 
 class Filter():
     def __init__(self):
@@ -15,7 +16,7 @@ class Filter():
         self.cnt = 0
         self.INIT_STEPS = 50
         self.ALPHA = 0.2
-        self.MAX_V = 15.0
+        self.MAX_V = 415.0
         
         self.x_his = []
         self.y_his = []
@@ -74,23 +75,51 @@ class GPS():
     def __init__(self, port = '/dev/ttyUSB0'):
         self.serial = None
         self.port = port
-        self.filter = Filter()
+        #self.filter = Filter()
+        self.stop_read_event = threading.Event()
+        
+        self.read_cyclic = threading.Thread(
+            target=self.read_data, args=()
+        )
+        self.x = 0.
+        self.y = 0.
+        self.t = 0.
     
     def start(self):
         try:
             self.serial = serial.Serial(self.port, 115200)
         except:
             print('Error when open GPS')
+
+        self.stop_read_event.clear()
+        self.read_cyclic.start()
+        
+    def close(self):
+        self.stop_read_event.set()
     
     def close(self):
         self.serial.close()
         
-    def get(self):
-        data = self.serial.readline()
-        while data[:6] != '$GPGGA':
+    def read_data(self):
+        while not self.stop_read_event.is_set():
             data = self.serial.readline()
-        x, y, v = self.parseGPS(data)
-        return x, y, v
+            try:
+                data = data.decode()
+            except:
+                continue
+            while data[:6] != '$GPGGA':
+                data = self.serial.readline()
+                try:
+                    data = data.decode()
+                except:
+                    continue
+
+            self.t = time.time()
+            self.x, self.y = self.parseGPS(data)
+            
+
+    def get(self):
+        return self.x, self.y, self.t
     
     def parseGPS(self, line):
         try:
@@ -111,12 +140,13 @@ class GPS():
             long_minute = longtitude[3:]
             longtitude = float(long_degree) + float(long_minute)/60
             
-            x, y = self.gps2xy(self, latitude, longtitude)
-            filter_x, filter_y, filter_v = self.filter.step(x, y)
-            return filter_x, filter_y, filter_v
+            x, y = self.gps2xy(latitude, longtitude)
+            #filter_x, filter_y, filter_v = self.filter.step(x, y)
+            #return filter_x, filter_y, filter_v
+            return x, y
         except:
-            #print('Error when parse GPS:', data)
-            return 0.0, 0.0
+            #print('Error when parse GPS:', line)
+            return self.x, self.y
         
     
     def gps2xy(self, latitude, longtitude):

@@ -30,7 +30,7 @@ class LiDAR:
             target=self.read_data, args=()
         )
         
-        self.points = None
+        self.points = np.zeros((384*720, 4))
         self.scan_index = 0 # cicle num
 
         self.set_param()
@@ -61,10 +61,13 @@ class LiDAR:
             self.soc.close()
             
     def get(self):
+        """
         if not self.data_queue.empty():
             return self.data_queue.get()
         else:
             return None
+        """
+        return self.points.T
         
     def clear(self):
         self.data_queue.queue.clear()
@@ -79,24 +82,21 @@ class LiDAR:
                 timestamp, factory = struct.unpack_from("<IH", data, offset=1200)
                 assert factory == 0x2237, hex(factory)  # 0x22=VLP-16, 0x37=Strongest Return
                 result = velodyne.parse_data(data[:1200])
-                intensity = result[:,3]
-                mask = np.where((intensity > 20))[0]
-                result = result[:,:3]
-                result = result[mask,:]
-                if self.points is None:
-                    self.points = result
-                else:
-                    self.points = np.concatenate((self.points, result), axis=0)
+                #intensity = result[:,3]
+                #mask = np.where((intensity > 20))[0]
+                #result = result[:,:3]
+                #result = result[mask,:]
+                self.points[384*self.scan_index:384*(self.scan_index+1), :] = result#[:,:3]
                 self.scan_index += 1
-                if self.scan_index >= 1800:
+                if self.scan_index >= 720:
                     self.scan_index = 0
-                    self.data_queue.put(self.points.copy())
-                    self.points = None
+                    #self.data_queue.put(self.points)
+                    #self.points = None
      
             
 class Visualizer(object):
-    def __init__(self, data_queue):
-        self.data_queue = data_queue
+    def __init__(self, lidar):
+        self.lidar = lidar
         self.traces = dict()
         self.app = QtGui.QApplication(sys.argv)
         self.w = gl.GLViewWidget()
@@ -135,9 +135,10 @@ class Visualizer(object):
         self.traces[0].setData(pos=points, color=color)
 
     def update(self):
-        if not self.data_queue.empty():
-            pts = self.data_queue.get()
-            self.points = pts
+        #if not self.data_queue.empty():
+        #    pts = self.data_queue.get()
+        #    self.points = pts
+        self.points = self.lidar.get().T
 
         self.set_plotdata(
             points=self.points,
@@ -170,7 +171,7 @@ class Visualizer(object):
 if __name__ == '__main__':
     lidar = LiDAR()
     lidar.start()
-    v = Visualizer(lidar.data_queue)
+    v = Visualizer(lidar)
     # it will block here and not stop
     v.animation()
     v.close()

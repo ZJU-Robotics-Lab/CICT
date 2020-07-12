@@ -88,8 +88,8 @@ py::array_t<double> parseData(const char *data){
 				double xy = distance * cos(LINE_ANGLE[channelId] * M_PI / 180.0);
 				double _x = xy * sin(azimuth);
 				double _y = xy * cos(azimuth);
-				ptr[pt_index*RETRUN_DIM + 0] = _x;
-				ptr[pt_index*RETRUN_DIM + 1] = _y;
+				ptr[pt_index*RETRUN_DIM + 0] = _y;
+				ptr[pt_index*RETRUN_DIM + 1] = -_x;
 				ptr[pt_index*RETRUN_DIM + 2] = _z;
 				ptr[pt_index*RETRUN_DIM + 3] = static_cast<double>(_reflectivity);
 				pt_index += 1;

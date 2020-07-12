@@ -97,7 +97,7 @@ class Controller:
             baudrate = baudrate
         )
         self.send_id = send_id
-        self.max_speed = 2700
+        self.max_speed = 2000
         self.max_rotation = 700
         self.acc_time = 3
         self.raw_rotation = 0

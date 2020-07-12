@@ -6,7 +6,7 @@ map_x_min = 0.0
 map_x_max = 10.0
 map_y_min = -10.0
 map_y_max = 10.0
-lim_z = -1.4
+lim_z = -1.5
 
 width = int((map_x_max-map_x_min)/pix_width)
 height = int((map_y_max-map_y_min)/pix_width)
@@ -54,7 +54,8 @@ def get_cost_map(trans_pc, point_cloud, show=False):
     u, v = project(trans_pc[0], trans_pc[1])
     img[u,v]=255
     
-    res = np.where((point_cloud[2] > lim_z) & (point_cloud[0] > map_x_min) & (point_cloud[0] < map_x_max) & (point_cloud[1] > map_y_min) & (point_cloud[1] < map_y_max)) 
+    res = np.where((point_cloud[0] > map_x_min) & (point_cloud[0] < map_x_max) & (point_cloud[1] > map_y_min) & (point_cloud[1] < map_y_max)) 
+    #res = np.where((point_cloud[2] > lim_z) & (point_cloud[0] > map_x_min) & (point_cloud[0] < map_x_max) & (point_cloud[1] > map_y_min) & (point_cloud[1] < map_y_max)) 
     point_cloud = point_cloud[:, res[0]]
     u, v = project(point_cloud[0], point_cloud[1])
     img2[u,v] = 0
@@ -122,8 +123,8 @@ def get_cmd(img, show=False, save=False, file_name=None):
     
     if show:
         cv2.imshow('Result', img)
-        cv2.waitKey(0)
-        cv2.destroyAllWindows()
+        cv2.waitKey(100)
+        #cv2.destroyAllWindows()
 
     #print('R:', best_r, '\tV:', vel, '\tW:', w)
     return vel, w

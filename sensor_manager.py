@@ -11,6 +11,35 @@ from utils import debug, Singleton
 
 from robot_camera import Camera
 from LiDAR import LiDAR
+from gps import GPS
+
+import serial
+import serial.tools.list_ports
+
+def scan_usb(device_type='CAN'):
+    """
+    input: 'CAN', 'XBOX' or 'GPS'
+    output: port name
+    """
+    port_list = list(serial.tools.list_ports.comports())
+    if len(port_list) == 0:
+        print('Cannot find any serial port !')
+    else:
+        for port in port_list:
+            name = port.device
+            hwid = port.hwid
+            vid = port.vid
+            if device_type == 'XBOX' and hwid == 'PNP0501':
+                print('Found XBOX', name)
+                return name
+            if device_type == 'CAN' and vid == 6790:
+                print('Found CAN Bus', name)
+                return name
+            if device_type == 'GPS' and vid == 1659:
+                print('Found GPS', name)
+                return name
+    print('No serial port matches', device_type, [device.name for device in port_list])
+    return None
 
 class SensorManager(Singleton):
     def __init__(self, param_dict):
@@ -33,8 +62,9 @@ class SensorManager(Singleton):
                 pass
                 self.sensor_dict[key] = sensor_type
             elif sensor_type == 'gps':
-                pass
-                self.sensor_dict[key] = sensor_type
+                sensor = GPS(scan_usb('GPS'))
+                sensor.start()
+                self.sensor_dict[key] = sensor
             else:
                 debug(info=str(key)+' not initialized', info_type='warning')
         else:

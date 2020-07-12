@@ -46,7 +46,7 @@
   <arg name="color_mode" default="$(arg color_rectified)" />
   <!-- Note: must set DEPTH_RAW to get raw depth values for points -->
   <arg name="depth_mode" default="$(arg depth_raw)" />
-  <arg name="stream_mode" default="$(arg stream_2560x720)" />
+  <arg name="stream_mode" default="$(arg stream_1280x720)" />
   <arg name="color_stream_format" default="$(arg stream_yuyv)" />
   <arg name="depth_stream_format" default="$(arg stream_yuyv)" />
   <arg name="depth_type" default="$(arg type_mono16)" />
@@ -56,12 +56,12 @@
   <!-- Auto-white balance -->
   <arg name="state_awb" default="true" />
   <!-- IR intensity -->
-  <arg name="ir_intensity" default="4" />
+  <arg name="ir_intensity" default="0" />
   <!-- IR Depth Only -->
   <arg name="ir_depth_only" default="false" />
 
   <!-- Generating points frequency, make slower than framerate -->
-  <arg name="points_frequency" default="10" />
+  <arg name="points_frequency" default="0" />
   <!-- Points display z distance scale factor -->
   <arg name="points_factor" default="1000.0" />
 
@@ -168,10 +168,12 @@
 
     <param name="left_mono_topic"   value="$(arg left_mono_topic)" />
     <param name="left_color_topic"  value="$(arg left_color_topic)" />
+    <!--
     <param name="right_mono_topic"  value="$(arg right_mono_topic)" />
     <param name="right_color_topic" value="$(arg right_color_topic)" />
     <param name="depth_topic"       value="$(arg depth_topic)" />
     <param name="points_topic"      value="$(arg points_topic)" />
+    -->
     <param name="imu_topic"         value="$(arg imu_topic)" />
     <param name="temp_topic"        value="$(arg temp_topic)" />
     <param name="imu_processed_topic"         value="$(arg imu_processed_topic)" />

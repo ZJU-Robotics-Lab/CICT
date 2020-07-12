@@ -1,12 +1,15 @@
 # -*- coding: utf-8 -*-
 from __future__ import print_function
 import math
+import time
 import serial
+import numpy as np
 import rospy
-from std_msgs.msg import String, Header
-from gps.msg import GPS
+from std_msgs.msg import String
+from rospy.numpy_msg import numpy_msg
+#from rospy_tutorials.msg import Floats
     
-class GPSReader():
+class GPS():
     def __init__(self, port = '/dev/ttyUSB0'):
         self.serial = None
         self.port = port
@@ -93,21 +96,15 @@ class GPSReader():
     	return xc,yc
     
 if __name__ == '__main__':
-    gps = GPSReader('/dev/ttyUSB1')
+    gps = GPS('/dev/ttyUSB0')
     gps.start()
-    pub = rospy.Publisher('gps', GPS, queue_size=1)
+    pub = rospy.Publisher('gps', String, queue_size=1)
     rospy.init_node('talker', anonymous=True)
-    frame_id = "gps_data"
     while True:
         data = gps.get()
-        h = Header()
-        h.stamp = rospy.Time.now()
-        h.frame_id = frame_id
-        gps_msg = GPS()
-        gps_msg.header = h
-        gps_msg.data = data
         if data == None:
             continue
         print(data)
-        pub.publish(gps_msg)
+        #array = np.array(data, dtype=np.float64)
+        pub.publish(data)
         

@@ -5,17 +5,44 @@ import threading
 import platform
 import struct
 import serial
+import serial.tools.list_ports
 from queue import Queue
 from can import BusABC, Message
 
 sys_type = platform.system()
-CHANNEL = 'COM4' if sys_type == 'Windows' else '/dev/ttyUSB0'
+#CHANNEL = 'COM4' if sys_type == 'Windows' else '/dev/ttyUSB0'
 BAUD_RATE = 115200
 SEND_ID = 0x203
 RECEIVE_ID_LOW = 0x183
 RECEIVE_ID_HIGH = 0x283
 RECEIVE_ID_ROTATION = 0x279
 
+def scan_usb(device_type='CAN'):
+    """
+    input: 'CAN' or 'XBOX'
+    output: port name
+    """
+    port_list = list(serial.tools.list_ports.comports())
+    if len(port_list) == 0:
+        print('Cannot find any serial port !')
+    else:
+        for port in port_list:
+            name = port.device
+            hwid = port.hwid
+            vid = port.vid
+            if device_type == 'XBOX' and hwid == 'PNP0501':
+                print('Found XBOX', name)
+                return name
+            if device_type == 'CAN' and vid == 6790:
+                print('Found CAN Bus', name)
+                return name
+            if device_type == 'GPS' and vid == 1659:
+                print('Found GPS', name)
+                return name
+    print('No serial port matches !',[device.name for device in port_list])
+    return None
+
+CHANNEL = scan_usb('GPS')
 
 class SerialBus(BusABC):
     def __init__(
