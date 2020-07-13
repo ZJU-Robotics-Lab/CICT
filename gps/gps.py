@@ -96,8 +96,6 @@ class GPS():
         
     def close(self):
         self.stop_read_event.set()
-    
-    def close(self):
         self.serial.close()
         
     def read_data(self):

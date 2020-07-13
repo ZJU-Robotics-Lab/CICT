@@ -6,14 +6,23 @@ import mtdef
 import math
 import time
 import datetime
+import threading
+
+def clip(value):
+    return min(1., max(-1., value))
+   
+def quaternion_to_euler(x, y, z, w):
+    roll = math.atan2(2*(w*x+y*z),1-2*(x*x+y*y))
+    pitch = math.asin(clip(2*(w*y-z*x)))
+    yaw = math.atan2(2*(w*z+x*y),1-2*(z*z+y*y))
+    return yaw, pitch, roll
 
 class XSensDriver(object):
-
-    def __init__(self):
-
-        device = 'auto'
+    def __init__(self, port='/dev/ttyUSB0'):
+        device = port#'auto'
         baudrate = 115200
         timeout = 0.05
+        """
         if device == 'auto':
             devs = mtdevice.find_devices()
             if devs:
@@ -31,7 +40,13 @@ class XSensDriver(object):
             return
 
         print("MT node interface: %s at %d bd." % (device, baudrate))
-
+        """
+        self.stop_read_event = threading.Event()
+        
+        self.read_cyclic = threading.Thread(
+            target=self.read_data, args=()
+        )
+        
         # Enable config mode
         self.mt = mtdevice.MTDevice(device, baudrate, timeout, True, True, False)
 
@@ -42,16 +57,31 @@ class XSensDriver(object):
         # oq400fe = orientation at 400hz
         # pl400fe = position (lat long) 400hz
         output_config = mtdevice.get_output_config('mf100fe,wr2000de,aa2000de,oq400de,pl400fe')
-        print("Changing output configuration",)
+        #print("Changing output configuration",)
         self.mt.SetOutputConfiguration(output_config)
-        print("System is Ok, Ready to Record.")
+        #print("System is Ok, Ready to Record.")
+        
+        self.ax = 0.0
+        self.ay = 0.0
+        self.az = 0.0
+        self.w = 0.0
+        self.yaw = 0.0
+        self.pitch = 0.0
+        self.roll = 0.0
 
-
-    def spin(self):
-        while True:
-            # Spin to try to get new messages
+    def start(self):
+        self.stop_read_event.clear()
+        self.read_cyclic.start()
+        
+    def close(self):
+        self.stop_read_event.set()
+        
+    def read_data(self):
+        while not self.stop_read_event.is_set():
             self.spin_once()
-            #self.reset_vars()
+        
+    def get(self):
+        return self.ax, self.ay, self.az, self.yaw, self.pitch, self.roll, self.w
 
     def spin_once(self):
         '''Read data from device and publishes ROS messages.'''
@@ -170,9 +200,10 @@ class XSensDriver(object):
             self.pub_imu = True
             if 'quaternion' in orient_data:
                 w, x, y, z = o
-                print('orientation ='+str(orient_data['quaternion']))
+                #print('orientation ='+str(orient_data['quaternion']))
             elif 'roll' in orient_data:
-                print('orientation_data r='+str(orient_data['roll'])+',p='+str(orient_data['pitch'])+',y='+str(orient_data['yaw']))
+                #print('orientation_data r='+str(orient_data['roll'])+',p='+str(orient_data['pitch'])+',y='+str(orient_data['yaw']))
+                pass
             
 
         def fill_from_Auxiliary(aux_data):
@@ -238,10 +269,12 @@ class XSensDriver(object):
             block.'''
             try:
                 x, y, z, w = o['Q1'], o['Q2'], o['Q3'], o['Q0']
-                print('orientation_data x='+str(x)+',y='+str(y)+',z='+str(z)+',w='+str(w))
+                self.yaw, self.pitch, self.roll = quaternion_to_euler(x, y, z, w)
+                #print('orientation_data x='+str(x)+',y='+str(y)+',z='+str(z)+',w='+str(w))
             except KeyError:
                 pass
             try:
+                pass
                 print('orientation_data r='+str(o['Roll'])+',p='+str(o['Pitch'])+',y='+str(o['Yaw']))
             except KeyError:
                 pass
@@ -256,7 +289,10 @@ class XSensDriver(object):
         def fill_from_Acceleration(o):
             '''Fill messages with information from 'Acceleration' MTData2 block.'''
             fill_from_Timestamp(o)
-            print('acceleration_data x='+str(o['accX'])+',y='+str(o['accY'])+',z='+str(o['accZ']))
+            self.ax = o['accX']
+            self.ay = o['accY']
+            self.az = o['accZ']
+            #print('acceleration_data x='+str(o['accX'])+',y='+str(o['accY'])+',z='+str(o['accZ']))
             pass
 
         def fill_from_Position(o):
@@ -271,7 +307,10 @@ class XSensDriver(object):
 
         def fill_from_Angular_Velocity(o):
             '''Fill messages with information from 'Angular Velocity' MTData2 block.'''
-            print('angular_vel_data x='+str(o['gyrX'])+',y='+str(o['gyrY'])+',z='+str(o['gyrZ']))
+            #global w
+            self.w = o['gyrZ']
+            #print(w)
+            #print('angular_vel_data x='+str(o['gyrX'])+',y='+str(o['gyrY'])+',z='+str(o['gyrZ']))
             pass
 
         def fill_from_GPS(o):
@@ -299,7 +338,7 @@ class XSensDriver(object):
 
         def fill_from_Magnetic(o):
             '''Fill messages with information from 'Magnetic' MTData2 block.'''
-            print('magnetic x='+str(o['magX'])+',y='+str(o['magY'])+',z='+str(o['magZ'])+',frame='+str(o['frame']))
+            #print('magnetic x='+str(o['magX'])+',y='+str(o['magY'])+',z='+str(o['magZ'])+',frame='+str(o['frame']))
             pass
 
         def fill_from_Velocity(o):
@@ -341,6 +380,7 @@ class XSensDriver(object):
         # publish available information
         # TODO: Actually do things here
         for n, o in data.items():
+            #print(n)
             try:
                 locals()[find_handler_name(n)](o)
             except KeyError:
@@ -355,4 +395,36 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    #main()
+    import numpy as np
+    driver = XSensDriver()
+    #vx = 0.
+    #vy = 0.
+    while True:
+        driver.spin_once()
+        ax, ay, az, yaw, pitch, roll, w = driver.get()
+        #print(w)
+        now = time.time()
+        theta_x = roll
+        theta_y = pitch
+        RxMat = np.array([
+            [1.0, 0.0, 0.0],
+            [0.0,  np.cos(theta_x),  np.sin(theta_x)],
+            [0.0, -np.sin(theta_x),  np.cos(theta_x)],
+        ])
+        
+        RyMat = np.array([
+            [np.cos(theta_y),  0.0,  -np.sin(theta_y)],
+            [0.0,  1.0,  0.0],
+            [np.sin(theta_y),  0.0, np.cos(theta_y)],
+        ])
+
+        R = np.dot(RxMat, RyMat)
+        g = np.dot(R, np.array([0., 0., 9.8]).T)
+
+        #print('g', g)
+        #print('ax', round(ax,2), 'ay', round(ay,2), 'az', round(az,2), \
+        #      '\nyaw', round(yaw*180./math.pi,2), 'pitch', round(pitch*180./math.pi,2), 'roll', round(roll*180./math.pi,2))
+
+        #vx += (g[0]-ax)*0.0025
+        #vy += (ay-g[1])*0.0025

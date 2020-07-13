@@ -18,7 +18,7 @@ import serial.tools.list_ports
 
 def scan_usb(device_type='CAN'):
     """
-    input: 'CAN', 'XBOX' or 'GPS'
+    input: 'CAN', 'XBOX', 'GPS' or 'IMU'
     output: port name
     """
     port_list = list(serial.tools.list_ports.comports())
@@ -59,8 +59,9 @@ class SensorManager(Singleton):
                 sensor.start()
                 self.sensor_dict[key] = sensor
             elif sensor_type == 'imu':
-                pass
-                self.sensor_dict[key] = sensor_type
+                sensor = GPS(scan_usb('IMU'))
+                sensor.start()
+                self.sensor_dict[key] = sensor
             elif sensor_type == 'gps':
                 sensor = GPS(scan_usb('GPS'))
                 sensor.start()
