@@ -2,18 +2,26 @@ import rosbag
 import rospy
 import cv2
 from cv_bridge import CvBridge, CvBridgeError
+import argparse
 
-img_path = '/home/wang/DataSet/yqdata/images2/'
-gps_path = '/home/wang/DataSet/yqdata/gps2/'
+parser = argparse.ArgumentParser(description='Params')
+parser.add_argument('-d', '--data', type=int, default=1, help='data index')
+parser.add_argument('-b', '--bag', type=str, default="2020-07-11-17-50-49.bag", help='bag name')
+args = parser.parse_args()
 
+img_path = '/media/wang/DATASET/images'+str(args.data)+'/'
+gps_path = '/media/wang/DATASET/gps'+str(args.data)+'/'
+cmd_path = '/media/wang/DATASET/cmd'+str(args.data)+'/'
 
 class ImageCreator():
     def __init__(self):
         self.bridge = CvBridge()
         self.last_gps = ""
+        self.last_cmd = ""
         
         self.gps_file = open(gps_path+'gps.txt', 'w')
-        with rosbag.Bag('/home/wang/github/RoBoCar/ROS/2020-06-09-15-39-20.bag', 'r') as bag:
+        self.cmd_file = open(cmd_path+'cmd.txt', 'w')
+        with rosbag.Bag('/media/wang/DATASET/'+args.bag, 'r') as bag:
             for topic,msg,t in bag.read_messages():
                 if topic == "/mynteye/left/image_color":
                     try:
@@ -24,10 +32,14 @@ class ImageCreator():
                     image_name = timestr+ ".png"
                     cv2.imwrite(img_path + image_name, cv_image)
                     
-                    self.gps_file.write(timestr + '\t' + self.last_gps + '\n')
+                    self.gps_file.write(timestr + '\t' + self.last_gps)
+                    self.cmd_file.write(timestr + '\t' + self.last_cmd)
                 elif topic == "/gps":
-                    message_string = str(msg)
+                    message_string = str(msg.data)
                     self.last_gps = message_string
+                elif topic == "/cmd":
+                    message_string = str(msg.data)
+                    self.last_cmd = message_string
 
 if __name__ == '__main__':
     try:
