@@ -8,7 +8,7 @@ import glob
 import re
 import pprint
 
-from mtdef import MID, OutputMode, OutputSettings, MTException, Baudrates, \
+from IMU.mtdef import MID, OutputMode, OutputSettings, MTException, Baudrates, \
     XDIGroup, getMIDName, DeviceState, DeprecatedMID, MTErrorMessage, \
     MTTimeoutException
 

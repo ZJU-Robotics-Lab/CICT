@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
-import mtdevice
-import mtdef
+from IMU import mtdevice
+from IMU import mtdef
 
 import math
 import time

@@ -123,17 +123,19 @@ if __name__ == '__main__':
         'lidar':None,
         'camera':None,
         'gps':None,
-        #'imu':None,
+        'imu':None,
         }
     sm = SensorManager(sensor_dict)
     sm.init_all()
-    nav_maker = NavMaker(sm['gps'])
+    nav_maker = NavMaker(sm['gps'], sm['imu'])
+    nav_maker.start()
+    time.sleep(1)
     while True:
         #t1 = time.time()
         x,y,t = sm['gps'].get()
         nav = get_nav()
-        if opt.show:
-            cv2.imshow('Nav', nav)
+        if False:
+            cv2.imshow('Nav', np.array(nav))
             cv2.waitKey(0)
             cv2.destroyAllWindows()
         input_img = get_img(nav)

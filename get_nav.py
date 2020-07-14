@@ -29,7 +29,7 @@ def filt_gps(x_list, y_list, ts_list):
     for i in range(len(x_list)-1):
         #ts = float(ts_list[i])
         next_s = float(ts_list[i+1])
-        dt = next_s - last_ts
+        dt = max(0.01,next_s - last_ts)
         dist = dist_p2p(x_list[i], y_list[i], x_list[i+1], y_list[i+1])
         v = dist/dt
 
@@ -56,8 +56,9 @@ x_offset = 3300
 y_offset = 2600
 
 class NavMaker:
-    def __init__(self, reader):
+    def __init__(self, reader, imu):
         self.reader = reader
+        self.imu = imu
         self.x = []
         self.y = []
         self.t = []
@@ -72,7 +73,8 @@ class NavMaker:
             target=self.read_data, args=()
         )
         self.nav = Image.open('nav.png').convert('RGB')
-    
+        self.yaw = 0.0
+
     def start(self):
         self.stop_read_event.clear()
         self.read_cyclic.start()
@@ -83,6 +85,9 @@ class NavMaker:
     def read_data(self):
         while not self.stop_read_event.is_set():
             x, y, t = self.reader.get()
+            #print('get data', x, y)
+            ax, ay, az, yaw, pitch, roll, w = self.imu.get()
+            self.yaw = yaw
             self.get_gps(x, y, t)
             self.get_nav()
             time.sleep(0.05)
@@ -107,14 +112,14 @@ class NavMaker:
         #cv2.imshow("OpenCV",img4)  
         #cv2.waitKey(0)
         #cv2.destroyAllWindows()
-        return img3
+        return img3.convert('RGB')
     
     def get_nav(self):
         if len(self.x) < 3:
           #print('No GPS')
           return
       
-        if len(self.x) < 100:
+        if len(self.x) < 50:
             nx, ny, ts = self.x, self.y, self.t
             dy = (ny[-1] - ny[-2])
             dx = (nx[-1] - nx[-2])
@@ -128,7 +133,8 @@ class NavMaker:
         dx = (self.gps_x[min(nn_index+5,len(fter_x)-1)] - self.gps_x[max(0,nn_index-5)])
         angle = 180.*math.atan2(dy, dx)/math.pi
     
-        input_angle = 0.5*self.last_angle+0.5*angle
-        self.last_angle = input_angle
-        
-        self.nav = self.make_nav(-input_angle+180., nn_index) 
+        #input_angle = 0.5*self.last_angle+0.5*angle
+        #self.last_angle = input_angle
+        #print('yaw', self.yaw*180./math.pi, input_angle)
+        input_angle = self.yaw*180./math.pi
+        self.nav = self.make_nav(-input_angle+80., nn_index) 

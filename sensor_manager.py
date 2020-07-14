@@ -12,6 +12,7 @@ from utils import debug, Singleton
 from robot_camera import Camera
 from LiDAR import LiDAR
 from gps import GPS
+from IMU.mtnode import XSensDriver
 
 import serial
 import serial.tools.list_ports
@@ -38,6 +39,9 @@ def scan_usb(device_type='CAN'):
             if device_type == 'GPS' and vid == 1659:
                 print('Found GPS', name)
                 return name
+            if device_type == 'IMU' and vid == 9785:
+                print('Found IMU', name)
+                return name
     print('No serial port matches', device_type, [device.name for device in port_list])
     return None
 
@@ -59,7 +63,7 @@ class SensorManager(Singleton):
                 sensor.start()
                 self.sensor_dict[key] = sensor
             elif sensor_type == 'imu':
-                sensor = GPS(scan_usb('IMU'))
+                sensor = XSensDriver(scan_usb('IMU'))
                 sensor.start()
                 self.sensor_dict[key] = sensor
             elif sensor_type == 'gps':
