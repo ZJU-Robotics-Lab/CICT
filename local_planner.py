@@ -45,22 +45,25 @@ def get_cost_map(trans_pc, point_cloud, show=False):
     img.fill(0)
     img2 = np.zeros((width,height,1), np.uint8)
     img2.fill(255)
-
-    kernel = np.ones((5,5),np.uint8)  
-    img = cv2.erode(img,kernel,iterations = 1)
     
     res = np.where((trans_pc[0] > map_x_min) & (trans_pc[0] < map_x_max) & (trans_pc[1] > map_y_min) & (trans_pc[1] < map_y_max)) 
     trans_pc = trans_pc[:, res[0]]
     u, v = project(trans_pc[0], trans_pc[1])
     img[u,v]=255
     
-    res = np.where((point_cloud[0] > map_x_min) & (point_cloud[0] < map_x_max) & (point_cloud[1] > map_y_min) & (point_cloud[1] < map_y_max)) 
-    #res = np.where((point_cloud[2] > lim_z) & (point_cloud[0] > map_x_min) & (point_cloud[0] < map_x_max) & (point_cloud[1] > map_y_min) & (point_cloud[1] < map_y_max)) 
+    #res = np.where((point_cloud[0] > map_x_min) & (point_cloud[0] < map_x_max) & (point_cloud[1] > map_y_min) & (point_cloud[1] < map_y_max)) 
+    res = np.where((point_cloud[2] > lim_z) & (point_cloud[0] > map_x_min) & (point_cloud[0] < map_x_max) & (point_cloud[1] > map_y_min) & (point_cloud[1] < map_y_max)) 
     point_cloud = point_cloud[:, res[0]]
     u, v = project(point_cloud[0], point_cloud[1])
     img2[u,v] = 0
-
+    
+    kernel = np.ones((20,20),np.uint8)  
+    img2 = cv2.erode(img2,kernel,iterations = 1)
+    
     img = cv2.addWeighted(img,0.5,img2,0.5,0)
+    kernel_size = (15, 15)
+    sigma = 15
+    img = cv2.GaussianBlur(img, kernel_size, sigma);
     if show:
         cv2.imshow('Result', img)
         cv2.waitKey(0)
@@ -120,7 +123,7 @@ def get_cmd(img, show=False, save=False, file_name=None):
     img[best_u,best_v] = 0
 
     w = vel/best_r
-    
+    #cv2.imwrite('./result.png', img)
     if show:
         cv2.imshow('Result', img)
         cv2.waitKey(100)

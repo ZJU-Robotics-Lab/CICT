@@ -22,6 +22,7 @@ from get_nav import NavMaker
 parser = argparse.ArgumentParser()
 parser.add_argument('--img_height', type=int, default=128, help='size of image height')
 parser.add_argument('--img_width', type=int, default=256, help='size of image width')
+parser.add_argument('--show', type=bool, default=True, help='show image')
 opt = parser.parse_args()
 
 
@@ -101,7 +102,7 @@ def inverse_perspective_mapping(img):
     #2.2 ms
     img = get_cost_map(trans_pc, point_cloud, False)
     #2.1 ms
-    v, w = get_cmd(img, show=True)
+    v, w = get_cmd(img, show=opt.show)
     print(v, w)
     ctrl.set_speed(1.0)
     ctrl.set_rotation(w*4)
@@ -131,6 +132,10 @@ if __name__ == '__main__':
         #t1 = time.time()
         x,y,t = sm['gps'].get()
         nav = get_nav()
+        if opt.show:
+            cv2.imshow('Nav', nav)
+            cv2.waitKey(0)
+            cv2.destroyAllWindows()
         input_img = get_img(nav)
         #t2 = time.time()
         #t1 = time.time()
