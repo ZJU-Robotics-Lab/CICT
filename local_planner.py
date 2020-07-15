@@ -57,12 +57,12 @@ def get_cost_map(trans_pc, point_cloud, show=False):
     u, v = project(point_cloud[0], point_cloud[1])
     img2[u,v] = 0
     
-    kernel = np.ones((20,20),np.uint8)  
+    kernel = np.ones((25,25),np.uint8)  
     img2 = cv2.erode(img2,kernel,iterations = 1)
     
     img = cv2.addWeighted(img,0.5,img2,0.5,0)
-    kernel_size = (15, 15)
-    sigma = 15
+    kernel_size = (21, 21)
+    sigma = 25
     img = cv2.GaussianBlur(img, kernel_size, sigma);
     if show:
         cv2.imshow('Result', img)
@@ -71,11 +71,11 @@ def get_cost_map(trans_pc, point_cloud, show=False):
     return img
 
 
-m = 10#angles number
-max_theta = 2*np.pi/3
+m = 20#angles number
+max_theta = np.pi/2
 L = 8.0# path length
- 
-vel = 1.0
+Length = 1.448555
+#vel = 0.3
 n = 100# points number
 
 def gen_r():
@@ -114,6 +114,8 @@ def get_cmd(img, show=False, save=False, file_name=None):
         ys = r*(1-np.cos(indexs*theta/n))
         u, v = project(xs, ys)
         cost = sum(img[u,v]/255.0)
+        #img[u, v] = 0
+        
         if best_cost < cost:
             best_cost = cost
             best_r = r
@@ -122,7 +124,7 @@ def get_cmd(img, show=False, save=False, file_name=None):
 
     img[best_u,best_v] = 0
 
-    w = vel/best_r
+    #w = vel/best_r
     #cv2.imwrite('./result.png', img)
     if show:
         cv2.imshow('Result', img)
@@ -130,4 +132,6 @@ def get_cmd(img, show=False, save=False, file_name=None):
         #cv2.destroyAllWindows()
 
     #print('R:', best_r, '\tV:', vel, '\tW:', w)
-    return vel, w
+    direct = -1.0 if r > 0 else 1.0
+    yaw = direct*np.arctan2(Length, abs(best_r))
+    return yaw#vel, w

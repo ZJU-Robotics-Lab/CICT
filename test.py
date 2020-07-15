@@ -70,7 +70,7 @@ pitch_rotationMat = np.array([
     [       0.,        1.,         0.     ],
     [-np.sin(theta_y), 0., np.cos(theta_y)],
 ])  
-    
+
 def inverse_perspective_mapping(img):
     point_cloud, intensity = read_pcd('pcd.pcd')
     intensity = np.array(intensity)
@@ -82,12 +82,14 @@ def inverse_perspective_mapping(img):
     image_uv = np.stack([res[1],res[0]])
     trans_pc = camera2lidar(image_uv)
     img = get_cost_map(trans_pc, point_cloud, False)
-    v, w = get_cmd(img, show=True)
-    #print(v, w)
+    r = get_cmd(img, show=True)
+    return r
 
 if __name__ == '__main__':
     while True:
         input_img = get_img()
         result = get_net_result(input_img)[0][0]
         result = result.data.numpy()*255+255
-        inverse_perspective_mapping(result)
+        yaw = inverse_perspective_mapping(result)
+        print(np.rad2deg(yaw))
+        break
