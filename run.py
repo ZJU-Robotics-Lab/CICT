@@ -22,7 +22,7 @@ from get_nav import NavMaker
 parser = argparse.ArgumentParser()
 parser.add_argument('--img_height', type=int, default=128, help='size of image height')
 parser.add_argument('--img_width', type=int, default=256, help='size of image width')
-parser.add_argument('--show', type=bool, default=True, help='show image')
+parser.add_argument('--show', type=bool, default=False, help='show image')
 opt = parser.parse_args()
 
 
@@ -54,20 +54,10 @@ def get_nav():
 
 def get_img(nav):
     img = sm['camera'].getImage()
-    #img = cv2.imread("img.png")
     img = Image.fromarray(cv2.cvtColor(img,cv2.COLOR_BGR2RGB))
-
-    # TODO
-    #nav = cv2.imread("nav.png")
-    #nav = Image.fromarray(cv2.cvtColor(nav,cv2.COLOR_BGR2RGB))
-    #t1= time.time()
     img = img_trans(img)
-    #t2= time.time()
     nav = img_trans(nav)
-    #t3= time.time()
     input_img = torch.cat((img, nav), 0).unsqueeze(0)
-    #print('transformer1', round(1000*(t2-t1),3), 'ms')
-    #print('transformer2', round(1000*(t3-t2),3), 'ms')
     return input_img
     
 
@@ -102,10 +92,14 @@ def inverse_perspective_mapping(img):
     #2.2 ms
     img = get_cost_map(trans_pc, point_cloud, False)
     #2.1 ms
-    v, w = get_cmd(img, show=opt.show)
-    print(v, w)
+    w, yaw = get_cmd(img, show=opt.show)
+
+    #direct = 1.0 if w >0 else -1.0
+    #rotation = np.rad2deg(yaw)/30.
+    #print(direct*2.4*abs(yaw))
     ctrl.set_speed(1.0)
-    ctrl.set_rotation(w*4)
+    ctrl.set_rotation(2.4*yaw)
+    #ctrl.set_rotation(direct*2.4*abs(yaw))
     
     #t4 = time.time()
     #print('get pcd', round(1000*(t2-t1),3), 'ms')

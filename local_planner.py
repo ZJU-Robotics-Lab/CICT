@@ -71,12 +71,16 @@ def get_cost_map(trans_pc, point_cloud, show=False):
     return img
 
 
-m = 20#angles number
-max_theta = np.pi/2
+m = 50#angles number
+max_theta = 2*np.pi/3
 L = 8.0# path length
 Length = 1.448555
-#vel = 0.3
+vel = 0.5
 n = 100# points number
+
+collision_penalty = 1.0
+half_width = 10
+collision_threshhold = 70
 
 def gen_r():
     rs = []
@@ -102,7 +106,7 @@ def get_cmd(img, show=False, save=False, file_name=None):
         rs.append(-r)
     
     best_cost = 0
-    best_r = None
+    best_r = 99999
     best_u = []
     best_v = []
     
@@ -113,7 +117,15 @@ def get_cmd(img, show=False, save=False, file_name=None):
         xs = np.abs(r*np.sin(indexs*theta/n))
         ys = r*(1-np.cos(indexs*theta/n))
         u, v = project(xs, ys)
-        cost = sum(img[u,v]/255.0)
+        v2 = np.clip(v+half_width, 0, height-1)
+        v3 = np.clip(v-half_width, 0, height-1)
+        
+        mask = np.where(img[u,v] < collision_threshhold)[0]
+        mask2 = np.where(img[u,v2] < collision_threshhold)[0]
+        mask3 = np.where(img[u,v3] < collision_threshhold)[0]
+        all_collision = len(mask)+len(mask2)+len(mask3)
+        
+        cost = sum(img[u,v]/255.0)+sum(img[u,v2]/255.0)+sum(img[u,v3]/255.0)-collision_penalty*all_collision
         #img[u, v] = 0
         
         if best_cost < cost:
@@ -124,14 +136,11 @@ def get_cmd(img, show=False, save=False, file_name=None):
 
     img[best_u,best_v] = 0
 
-    #w = vel/best_r
-    #cv2.imwrite('./result.png', img)
     if show:
         cv2.imshow('Result', img)
         cv2.waitKey(100)
         #cv2.destroyAllWindows()
 
-    #print('R:', best_r, '\tV:', vel, '\tW:', w)
-    direct = -1.0 if r > 0 else 1.0
+    direct = -1.0 if best_r > 0 else 1.0
     yaw = direct*np.arctan2(Length, abs(best_r))
-    return yaw#vel, w
+    return yaw
