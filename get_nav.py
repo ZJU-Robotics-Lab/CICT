@@ -129,9 +129,9 @@ class NavMaker:
             
         fter_x, fter_y = filt_gps(nx, ny, ts)
         nn_x, nn_y, nn_index = find_nn(fter_x[-1], fter_y[-1], self.gps_x, self.gps_y)
-        dy = (self.gps_y[min(nn_index+5,len(fter_x)-1)] - self.gps_y[max(0,nn_index-5)])
-        dx = (self.gps_x[min(nn_index+5,len(fter_x)-1)] - self.gps_x[max(0,nn_index-5)])
-        angle = 180.*math.atan2(dy, dx)/math.pi
+        #dy = (self.gps_y[min(nn_index+5,len(fter_x)-1)] - self.gps_y[max(0,nn_index-5)])
+        #dx = (self.gps_x[min(nn_index+5,len(fter_x)-1)] - self.gps_x[max(0,nn_index-5)])
+        #angle = 180.*math.atan2(dy, dx)/math.pi
     
         #input_angle = 0.5*self.last_angle+0.5*angle
         #self.last_angle = input_angle
