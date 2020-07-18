@@ -15,6 +15,7 @@ from models import GeneratorUNet
 
 from sensor_manager import SensorManager, scan_usb
 from controller import Controller
+from controller.passive_xbox import JoyStick
 from local_planner import get_cost_map, get_cmd
 from camera_info import camera2lidar
 from get_nav import NavMaker
@@ -75,36 +76,25 @@ pitch_rotationMat = np.array([
 ])  
     
 def inverse_perspective_mapping(img):
-    global sm, ctrl
-    #t1 = time.time()
+    global sm, ctrl, joystick, file
     point_cloud = sm['lidar'].get()
     mask = np.where((point_cloud[3] > 10))[0]
     point_cloud = point_cloud[:,mask][:3,:]
     point_cloud = np.dot(pitch_rotationMat, point_cloud)
-    #t2 = time.time()
-    #2.2 ms
     img = cv2.resize(img, (1280, 720), interpolation=cv2.INTER_AREA)
     res = np.where(img > 100)
     image_uv = np.stack([res[1],res[0]])
-    #t3 = time.time()
-    #1.9 ms
     trans_pc = camera2lidar(image_uv)
-    #2.2 ms
     img = get_cost_map(trans_pc, point_cloud, False)
-    #2.1 ms
-    yaw = get_cmd(img, show=opt.show)
-
-    #direct = 1.0 if w >0 else -1.0
-    #rotation = np.rad2deg(yaw)/30.
-    #print(direct*2.4*abs(yaw))
+    file_name = str(time.time())
+    cv2.imwrite('record/'+file_name+'.png', img) 
+    yaw = get_cmd(img, show=False)
+    passive_rotation = 2.4*yaw
+    speed, rotation = joystick.get()
     ctrl.set_speed(1.0)
-    ctrl.set_rotation(2.4*yaw)
-    #ctrl.set_rotation(direct*2.4*abs(yaw))
-    
-    #t4 = time.time()
-    #print('get pcd', round(1000*(t2-t1),3), 'ms')
-    #print('process img', round(1000*(t3-t2),3), 'ms')
-    #print('get cmd', round(1000*(t4-t3),3), 'ms')
+    ctrl.set_rotation(rotation)
+    file.write(file_name+'\t'+str(rotation)+'\t'+str(passive_rotation)+'\n')
+
 
 if __name__ == '__main__':
     ctrl = Controller(scan_usb('CAN'))
@@ -112,7 +102,9 @@ if __name__ == '__main__':
     ctrl.set_forward()
     ctrl.set_max_speed(1000)
     
-
+    joystick = JoyStick()
+    joystick.start()
+    file = open('record.txt', 'a+')
     sensor_dict = {
         'lidar':None,
         'camera':None,
@@ -125,7 +117,6 @@ if __name__ == '__main__':
     nav_maker.start()
     time.sleep(1)
     while True:
-        #t1 = time.time()
         x,y,t = sm['gps'].get()
         nav = get_nav()
         if False:
@@ -133,19 +124,8 @@ if __name__ == '__main__':
             cv2.waitKey(0)
             cv2.destroyAllWindows()
         input_img = get_img(nav)
-        #t2 = time.time()
-        #t1 = time.time()
         result = get_net_result(input_img)[0][0]
         result = result.data.numpy()*255+255
-        #img_gray = cv2.resize(result,(256*4, 128*4),interpolation=cv2.INTER_CUBIC)
-        #cv2.imshow("img_gray",img_gray)
-        #cv2.waitKey(0)
-        #cv2.destroyAllWindows()
-        #t3 = time.time()
         inverse_perspective_mapping(result)
-        #t4= time.time()
-        #print('img process', round(1000*(t2-t1),3), 'ms')
-        #print('get_net_result', round(1000*(t3-t2),3), 'ms')
-        #print('inverse_perspective_mapping', round(1000*(t4-t3),3), 'ms')
-        #print('total', round(1000*(t4-t1),3), 'ms')
+    file.close()
     sm.close_all()
