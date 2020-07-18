@@ -15,7 +15,7 @@ from models import GeneratorUNet
 
 from sensor_manager import SensorManager, scan_usb
 from controller import Controller
-from controller.passive_xbox import JoyStick
+# from controller.passive_xbox import JoyStick
 from local_planner import get_cost_map, get_cmd
 from camera_info import camera2lidar
 from get_nav import NavMaker
@@ -48,13 +48,19 @@ img_trans_ = [
 ]
 img_trans = transforms.Compose(img_trans_)
 
+global_nav = None
+global_img = None
+global_res = None
 def get_nav():
-    global nav_maker
+    global nav_maker, global_nav
     nav = nav_maker.get()
+    global_nav = cv2.cvtColor(np.asarray(nav),cv2.COLOR_RGB2BGR) 
     return nav
 
 def get_img(nav):
+    global global_img
     img = sm['camera'].getImage()
+    global_img = img
     img = Image.fromarray(cv2.cvtColor(img,cv2.COLOR_BGR2RGB))
     img = img_trans(img)
     nav = img_trans(nav)
@@ -76,7 +82,7 @@ pitch_rotationMat = np.array([
 ])  
     
 def inverse_perspective_mapping(img):
-    global sm, ctrl, joystick, file
+    global sm, ctrl, file
     point_cloud = sm['lidar'].get()
     mask = np.where((point_cloud[3] > 10))[0]
     point_cloud = point_cloud[:,mask][:3,:]
@@ -88,12 +94,16 @@ def inverse_perspective_mapping(img):
     img = get_cost_map(trans_pc, point_cloud, False)
     file_name = str(time.time())
     cv2.imwrite('record/'+file_name+'.png', img) 
+    cv2.imwrite('record/'+file_name+'_nav.png', global_nav) 
+    cv2.imwrite('record/'+file_name+'_img.png', global_img) 
+    cv2.imwrite('record/'+file_name+'_res.png', global_res) 
     yaw = get_cmd(img, show=False)
-    passive_rotation = 2.4*yaw
-    speed, rotation = joystick.get()
+    rotation = -2.4*yaw
+    # speed, rotation = joystick.get()
     ctrl.set_speed(1.0)
     ctrl.set_rotation(rotation)
-    file.write(file_name+'\t'+str(rotation)+'\t'+str(passive_rotation)+'\n')
+    # print(-rotation, passive_rotation)
+    file.write(file_name+'\t'+str(-rotation)+'\n')
 
 
 if __name__ == '__main__':
@@ -102,8 +112,8 @@ if __name__ == '__main__':
     ctrl.set_forward()
     ctrl.set_max_speed(1000)
     
-    joystick = JoyStick()
-    joystick.start()
+    # joystick = JoyStick()
+    # joystick.start()
     file = open('record.txt', 'a+')
     sensor_dict = {
         'lidar':None,
@@ -119,13 +129,10 @@ if __name__ == '__main__':
     while True:
         x,y,t = sm['gps'].get()
         nav = get_nav()
-        if False:
-            cv2.imshow('Nav', np.array(nav))
-            cv2.waitKey(0)
-            cv2.destroyAllWindows()
         input_img = get_img(nav)
         result = get_net_result(input_img)[0][0]
         result = result.data.numpy()*255+255
+        global_res = cv2.resize(result,(256, 128),interpolation=cv2.INTER_CUBIC)
         inverse_perspective_mapping(result)
     file.close()
     sm.close_all()
