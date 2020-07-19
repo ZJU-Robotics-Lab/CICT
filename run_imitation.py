@@ -113,6 +113,7 @@ def inverse_perspective_mapping(img):
     #print(direct*2.4*abs(yaw))
     ctrl.set_speed(1.0)
     #ctrl.set_rotation(2.4*yaw)
+    print(cmd)
     ctrl.set_rotation(cmd)
     #ctrl.set_rotation(direct*2.4*abs(yaw))
     
