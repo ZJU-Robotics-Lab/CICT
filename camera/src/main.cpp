@@ -10,7 +10,7 @@
 #include "util/cam_utils.h"
 
 #define FRAMERATE 30
-#define RESOLUTION StreamMode::STREAM_640x480
+#define RESOLUTION StreamMode::STREAM_1280x720
 
 namespace py = pybind11;
 MYNTEYE_USE_NAMESPACE
@@ -34,7 +34,6 @@ public:
         cam->AutoExposureControl(true);
         cam->SetExposureTime(1.0);
         cam->SetGlobalGain(1.0);
-        std::cout <<  "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFF" << std::endl;
         bool is_left_ok = cam->IsStreamDataEnabled(ImageType::IMAGE_LEFT_COLOR);
         if (!cam->IsOpened() || !is_left_ok) {
             std::cerr << "Error: Open camera failed" << std::endl;
