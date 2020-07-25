@@ -19,13 +19,13 @@ bash install.sh
 # Features
 * Run deep learning model
 ```bash
-python all_in_one.py
+python scripts/run.py
 ```
 
 * Camera image reading in python with pybind11
 ```bash
-bash camera/build.sh
-python camera/run.py
+bash device/camera/build.sh
+python device/camera/run.py
 ```
 * Camera calibration
 ```bash
@@ -34,7 +34,7 @@ python calibration.py --dir imgs --test left-0001.png
 ```
 * LiDAR data reading
 ```bash
-cd LiDAR/velodyne-driver
+cd device/lidar/velodyne-driver
 mkdir build
 cd build
 cmake ..
@@ -45,8 +45,8 @@ python lidar.py
 ```
 * IMU data reading
 ```bash
-bash IMU/get_permission.sh
-python IMU/mtnode.py
+bash scripts/get_permission.sh
+python device/imu/mtnode.py
 ```
 * XBox control
   * Right axis up: speed
@@ -57,8 +57,8 @@ python IMU/mtnode.py
   * Hat up and down: increase or reduce max speed
   * Hat right and left: increase or reduce acceleration
 ```bash
-cd controller
-bash get_permission.sh
+bash scripts/get_permission.sh
+cd device/controller
 python xbox.py
 ```
 
@@ -95,3 +95,11 @@ python2 ROS/src/tools/save_img.py -d 1 -b 2020-07-11-17-50-49.bag
 cd ROS
 bash run_collect.sh
 ```
+
+
+
+# Robot Parameter
+
+* Shaft length ： 688.008mm
+* Axle distance ：1448.555mm
+* Voltage : 48V
