@@ -3,7 +3,6 @@ This repository is for the robot car development, including main program, sensor
 
 ![robocar](./doc/robocar.jpg)
 
-
 #### Sensors used:
 * LiDAR: [Velodyne VLP-16](https://www.velodynelidar.com/vlp-16.html)
 * Camera: [MYNT EYE D-1000-120](https://www.myntai.com/mynteye/depth)
@@ -97,9 +96,13 @@ bash run_collect.sh
 ```
 
 
-
 # Robot Parameter
 
 * Shaft length ： 688.008mm
 * Axle distance ：1448.555mm
 * Voltage : 48V
+
+
+# Video
+
+[![video](./doc/video_link.png)](https://www.youtube.com/watch?v=3FuBtssUuRY)
