@@ -11,13 +11,18 @@ config = {
     'port': 2000,
     'timeout': 5.0,
     'camera':{
-        'img_length': 800,
-        'img_width': 600,
+        'img_length': 1280,
+        'img_width': 720,
         'fov': 90,
         'fps': 30,
         },
     'lidar':{
+        'channels': 64,
         'rpm': 10,
+        'pps': 300000,
+        'range': 50,
+        'lower_fov': -30,
+        'upper_fov': 10,
         },
     'imu':{
         'fps': 400,
