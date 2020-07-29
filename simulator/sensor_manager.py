@@ -24,7 +24,7 @@ def add_lidar(world, blueprint, vehicle, transform):
     lidar_bp.set_attribute('channels', str(config['lidar']['channels']))
     lidar_bp.set_attribute('rotation_frequency', str(config['lidar']['rpm']))
     lidar_bp.set_attribute('points_per_second', str(config['lidar']['pps']))
-    lidar_bp.set_attribute('sensor_tick', str(1./config['lidar']['rpm']))
+    lidar_bp.set_attribute('sensor_tick', str(config['lidar']['sensor_tick']))
     lidar_bp.set_attribute('range', str(config['lidar']['range']))
     lidar_bp.set_attribute('lower_fov', str(config['lidar']['lower_fov']))
     lidar_bp.set_attribute('upper_fov', str(config['lidar']['upper_fov']))

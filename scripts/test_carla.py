@@ -24,18 +24,7 @@ from learning.models import GeneratorUNet
 
 from utils.local_planner_sim import get_cost_map, get_cmd
 from utils.camera_info_sim import camera2lidar
-
-from device.lidar import Visualizer
-
-class PDVisualizer(Visualizer):        
-    def update(self):
-        global global_pc
-        self.points = global_pc.T
-        self.set_plotdata(
-            points=self.points,
-            color=(0.,1.,1.,1.)
-        )
-        
+ 
 parser = argparse.ArgumentParser()
 parser.add_argument('--img_height', type=int, default=128, help='size of image height')
 parser.add_argument('--img_width', type=int, default=256, help='size of image width')
@@ -109,6 +98,9 @@ def lidar_callback(data):
     mask = np.where((point_cloud[0] > 1.0)|(point_cloud[0] < -4.0)|(point_cloud[1] > 1.2)|(point_cloud[1] < -1.2))[0]
     point_cloud = point_cloud[:, mask]
     global_pc = point_cloud
+    print(len(point_cloud.tobytes()))
+    #point_cloud.tobytes()
+    #np.frombuffer(ts,dtype=float).reshape(10, 10)
     
 def imu_callback(data):
     # Measures linear acceleration in m/s^2
@@ -164,7 +156,6 @@ def main():
     sm = SensorManager(world, blueprint, vehicle, sensor_dict)
     sm.init_all()
     time.sleep(0.3)
-    #v = PDVisualizer(None)
 
     try:
         while True:
@@ -189,8 +180,6 @@ def main():
             #vehicle.get_velocity().x
 
             cv2.waitKey(1)
-            #v.animation()
-            #v.close()
             #break
             
         cv2.destroyAllWindows()
