@@ -32,6 +32,7 @@ MAX_SPEED = 20
 
 parser = argparse.ArgumentParser(description='Params')
 parser.add_argument('-d', '--data', type=int, default=1, help='data index')
+parser.add_argument('-n', '--num', type=int, default=100000, help='total number')
 args = parser.parse_args()
 
 data_index = args.data
@@ -77,8 +78,6 @@ def image_callback(data):
     global global_img
     array = np.frombuffer(data.raw_data, dtype=np.dtype("uint8")) 
     array = np.reshape(array, (data.height, data.width, 4)) # RGBA format
-    array = array[:, :, :3] # Take only RGB
-    array = array[:, :, ::-1] # BGR
     global_img = array
     
 def lidar_callback(data):
@@ -97,11 +96,14 @@ def main():
     client.set_timeout(config['timeout'])
     
     world = client.get_world()
+
     weather = carla.WeatherParameters(
-        cloudiness=random.randint(0,70),
-        precipitation=random.randint(0,30),
-        sun_altitude_angle=random.randint(40,70)
+        cloudiness=random.randint(0,10),
+        precipitation=0,
+        sun_altitude_angle=random.randint(70,90)
     )
+    
+    #world.set_weather(carla.WeatherParameters.ClearNoon)
     set_weather(world, weather)
     
     blueprint = world.get_blueprint_library()
@@ -136,7 +138,7 @@ def main():
     plan_map = replan(agent, destination, copy.deepcopy(origin_map))
     
     FPS = [str(time.time())]
-    for cnt in tqdm(range(10000)):
+    for cnt in tqdm(range(args.num)):
         if close2dest(vehicle, destination):
             destination = get_random_destination(spawn_points)
             plan_map = replan(agent, destination, copy.deepcopy(origin_map))
