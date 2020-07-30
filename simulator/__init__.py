@@ -11,8 +11,8 @@ config = {
     'port': 2000,
     'timeout': 5.0,
     'camera':{
-        'img_length': 1280,
-        'img_width': 720,
+        'img_length': 640,
+        'img_width': 360,
         'fov': 90,
         'fps': 30,
         },

@@ -7,15 +7,15 @@ width = 1280
 height = 720
 
 fov = 90.
-fx = 1280/(2*np.tan(fov*np.pi/360))#$711.642238
-fy = fx#711.302135
+fx = 640#1280/(2*np.tan(fov*np.pi/360))
+fy = fx
 s = 0.0
 x0 = 1280/2#644.942373
 y0 = 720/2#336.030580
 
 
 cameraMat = np.array([
-        [fx,  s, x0],
+        [fx, 0., x0],
         [0., fy, y0],
         [0., 0., 1.]
 ])
@@ -93,7 +93,7 @@ def camera2lidar(image_uv):
     translation = np.dot(rotation, translation)
     #R = rotation
     T = translation
-    roadheight = -1.95
+    roadheight = -2.0
     
     u = image_uv[0]
     v = image_uv[1]

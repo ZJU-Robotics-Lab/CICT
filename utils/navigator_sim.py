@@ -1,27 +1,15 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-import sys
-from os.path import join, dirname
-sys.path.insert(0, join(dirname(__file__), '..'))
-
-import simulator
-simulator.load('/home/wang/CARLA_0.9.9.4')
-import carla
-sys.path.append('/home/wang/CARLA_0.9.9.4/PythonAPI/carla')
-from agents.navigation.basic_agent import BasicAgent
-from simulator import config, set_weather, add_vehicle
-
 import cv2
 import random
 import numpy as np
 import PIL.Image as Image
 from PIL import ImageDraw
 
-MAX_SPEED = 20
 scale = 12.0
 x_offset = 2500
 y_offset = 3000
-    
+
 def get_random_destination(spawn_points):
     return random.sample(spawn_points, 1)[0]
     
@@ -83,55 +71,3 @@ def replan(agent, destination, origin_map):
     
 def close2dest(vehicle, destination):
     return destination.location.distance(vehicle.get_location()) < 20
-    
-def main():
-    client = carla.Client(config['host'], config['port'])
-    client.set_timeout(config['timeout'])
-    
-    world = client.get_world()
-    weather = carla.WeatherParameters(
-        cloudiness=30.0,
-        precipitation=30.0,
-        sun_altitude_angle=50.0
-    )
-    set_weather(world, weather)
-    
-    blueprint = world.get_blueprint_library()
-    world_map = world.get_map()
-    
-    vehicle = add_vehicle(world, blueprint, vehicle_type='vehicle.bmw.grandtourer')
-    # Enables or disables the simulation of physics on this actor.
-    vehicle.set_simulate_physics(True)
-    
-    spawn_points = world_map.get_spawn_points()
-    waypoint_tuple_list = world_map.get_topology()
-    origin_map = get_map(waypoint_tuple_list)
-
-    agent = BasicAgent(vehicle, target_speed=MAX_SPEED)
-    
-    destination = get_random_destination(spawn_points)
-    plan_map = replan(agent, destination, origin_map)
-    
-    while True:
-        if close2dest(vehicle, destination):
-            destination = get_random_destination(spawn_points)
-            plan_map = replan(agent, destination, origin_map)
-            
-        if vehicle.is_at_traffic_light():
-            traffic_light = vehicle.get_traffic_light()
-            if traffic_light.get_state() == carla.TrafficLightState.Red:
-                traffic_light.set_state(carla.TrafficLightState.Green)
-                
-        control = agent.run_step()
-        control.manual_gear_shift = False
-        vehicle.apply_control(control)
-        
-        nav = get_nav(vehicle, plan_map)
-        cv2.imshow('Nav', nav)
-        cv2.waitKey(16)
-        
-    cv2.destroyAllWindows()
-    vehicle.destroy()
-        
-if __name__ == '__main__':
-    main()
