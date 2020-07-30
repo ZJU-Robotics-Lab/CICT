@@ -75,7 +75,7 @@ def main():
     vehicle = add_vehicle(world, blueprint, vehicle_type='vehicle.bmw.grandtourer')
     # Enables or disables the simulation of physics on this actor.
     vehicle.set_simulate_physics(True)
-
+    
     sensor_dict = {
         'camera':{
             'transform':carla.Transform(carla.Location(x=1.5, y=0.0, z=2.0)),
@@ -98,10 +98,17 @@ def main():
     sm = SensorManager(world, blueprint, vehicle, sensor_dict)
     sm.init_all()
     time.sleep(0.3)
+    
+    vehicle.set_autopilot(True)
 
     try:
         while True:
+            if vehicle.is_at_traffic_light():
+                traffic_light = vehicle.get_traffic_light()
+                if traffic_light.get_state() == carla.TrafficLightState.Red:
+                    traffic_light.set_state(carla.TrafficLightState.Green)
             cv2.imshow('Raw image', global_img)
+            """
             vehicle.apply_control(carla.VehicleControl(
                 throttle=0.3, 
                 steer = 0.0, 
@@ -111,11 +118,11 @@ def main():
                 brake=0.0,
                 hand_brake=False
             ))
-            
+            """
             #vehicle.get_angular_velocity().z
             #vehicle.get_velocity().x
 
-            cv2.waitKey(1)
+            cv2.waitKey(16)
             #break
             
         cv2.destroyAllWindows()
