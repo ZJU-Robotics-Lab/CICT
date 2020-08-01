@@ -15,10 +15,10 @@ import time
 MAX_SPEED = 20
 TRAJ_LENGTH = 10
 vehicle_width = 2.2
-longitudinal_sample_number_near = 7.2
-longitudinal_sample_number_far = 0
+longitudinal_sample_number_near = 8
+longitudinal_sample_number_far = 0.5
 lateral_sample_number = 20
-lateral_step_factor = 0.7
+lateral_step_factor = 1.0
 
 parser = argparse.ArgumentParser(description='Params')
 parser.add_argument('-d', '--data', type=int, default=1, help='data index')
@@ -164,8 +164,8 @@ def main():
         t1 = time.time()
         empty_image = collect_perspective.getPM(traj_pose_list, vehicle_transform, img)
         t2 = time.time()
-        print('time: ' + str(t2-t1))
-
+        print('time total: ' + str(t2-t1))
+        print()
 
         # img_pub.publish(CarlaSensorDataConversion.cv2ImageToSensorImage(img, 'img'))
         # image_pub.publish(CarlaSensorDataConversion.cv2ImageToSensorImage(empty_image, 'image'))
