@@ -142,8 +142,8 @@ def main():
     sensor_master = CarlaSensorMaster(sensor, sensor_dict['camera']['transform'], binded=True)
     collect_perspective = CollectPerspectiveImage(param, sensor_master)
 
-    img_pub = rospy.Publisher('~img', Image, queue_size=1)
-    image_pub = rospy.Publisher('~image', Image, queue_size=1)
+    # img_pub = rospy.Publisher('~img', Image, queue_size=1)
+    # image_pub = rospy.Publisher('~image', Image, queue_size=1)
 
     for index, time_stamp in enumerate(time_stamp_list):
         end_index = find_traj_with_fix_length(index, time_stamp_list, time_stamp_pose_dict)
@@ -167,18 +167,18 @@ def main():
         print('time: ' + str(t2-t1))
 
 
-        img_pub.publish(CarlaSensorDataConversion.cv2ImageToSensorImage(img, 'img'))
-        image_pub.publish(CarlaSensorDataConversion.cv2ImageToSensorImage(empty_image, 'image'))
+        # img_pub.publish(CarlaSensorDataConversion.cv2ImageToSensorImage(img, 'img'))
+        # image_pub.publish(CarlaSensorDataConversion.cv2ImageToSensorImage(empty_image, 'image'))
 
         # print('\n\n')
 
 
 
-import rospy
+# import rospy
 
 
 if __name__ == '__main__':
-    rospy.init_node('collect_pm')
+    # rospy.init_node('collect_pm')
     try:
         main()
     except KeyboardInterrupt:
