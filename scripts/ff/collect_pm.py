@@ -1,6 +1,5 @@
 
 import numpy as np
-export OMP_NUM_THREADS=11
 import copy
 import time
 
