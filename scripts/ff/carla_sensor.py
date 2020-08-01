@@ -1,7 +1,7 @@
 
 # carla_sensor.py
 
-import rospy, tf
+# import rospy, tf
 from std_msgs.msg import Header
 from sensor_msgs.msg import Image
 from sensor_msgs.point_cloud2 import create_cloud_xyz32
