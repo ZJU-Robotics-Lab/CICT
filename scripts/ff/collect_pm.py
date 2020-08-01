@@ -1,6 +1,8 @@
 
 import numpy as np
+export OMP_NUM_THREADS=11
 import copy
+import time
 
 import carla
 from .carla_sensor import CarlaSensorDataConversion, get_specific_sensor
@@ -25,42 +27,37 @@ def world3DToVehicle3D(point_vec, pose):
     return vehicle_vec
 
 
-def getTraj(pose1, pose2, T):
-    x1, x2 = pose1.location.x, pose2.location.x
-    y1, y2 = pose1.location.y, pose2.location.y
-    z1, z2 = pose1.location.z, pose2.location.z
-    theta1, theta2 = np.deg2rad(pose1.rotation.yaw), np.deg2rad(pose2.rotation.yaw)
+# def getTraj(pose1, pose2, T):
+#     x1, x2 = pose1.location.x, pose2.location.x
+#     y1, y2 = pose1.location.y, pose2.location.y
+#     z1, z2 = pose1.location.z, pose2.location.z
+#     theta1, theta2 = np.deg2rad(pose1.rotation.yaw), np.deg2rad(pose2.rotation.yaw)
 
-    A = np.zeros((6,6))
-    A[0,0] = 1; A[0,1] = T; A[0,2] = T**2
-    A[1,3] = 1; A[1,4] = T; A[1,5] = T**2
-    A[2,0] = 1; A[3,3] = 1
-    A[4,1] = 1; A[4,4] = -theta1
-    A[5,1] = 1; A[5,2] = 2*T; A[5,4] = theta2; A[5,5] = 2*theta2*T
+#     A = np.zeros((6,6))
+#     A[0,0] = 1; A[0,1] = T; A[0,2] = T**2
+#     A[1,3] = 1; A[1,4] = T; A[1,5] = T**2
+#     A[2,0] = 1; A[3,3] = 1
+#     A[4,1] = 1; A[4,4] = -theta1
+#     A[5,1] = 1; A[5,2] = 2*T; A[5,4] = theta2; A[5,5] = 2*theta2*T
 
-    b = np.zeros((6,1))
-    b[0,0] = x2; b[1,0] = y2
-    b[2,0] = x1; b[3,0] = y1
+#     b = np.zeros((6,1))
+#     b[0,0] = x2; b[1,0] = y2
+#     b[2,0] = x1; b[3,0] = y1
 
-    p = np.dot(np.linalg.inv(A), b)
+#     p = np.dot(np.linalg.inv(A), b)
 
-    return np.vstack((p.T.reshape(2,3), np.array([z1, z2-z1, 0])))
+#     return np.vstack((p.T.reshape(2,3), np.array([z1, z2-z1, 0])))
 
-def getTimeVec(t):
-    return np.array([1, t, t**2]).reshape(3,1)
-def getDTimeVec(t):
-    return np.array([0, 1, t]).reshape(3,1)
+# def getTimeVec(t):
+#     return np.array([1, t, t**2]).reshape(3,1)
+# def getDTimeVec(t):
+#     return np.array([0, 1, t]).reshape(3,1)
 
-
-def getPose(t, p, pose1, pose2):
-    position = np.dot(p, getTimeVec(t))
-    # theta = np.arctan2(np.dot(p[0,:], getDTimeVec(t))[0], np.dot(p[1,:], getDTimeVec(t))[0])
-    # yaw = np.rad2deg(theta)
-
-
-    # print(position.shape)
-    # print(position)
-    return carla.Transform(carla.Location(x=position[0,0], y=position[1,0], z=position[2,0]), carla.Rotation(yaw=yaw))
+# def getPose(t, p, pose1, pose2):
+#     position = np.dot(p, getTimeVec(t))
+#     # theta = np.arctan2(np.dot(p[0,:], getDTimeVec(t))[0], np.dot(p[1,:], getDTimeVec(t))[0])
+#     # yaw = np.rad2deg(theta)
+#     return carla.Transform(carla.Location(x=position[0,0], y=position[1,0], z=position[2,0]), carla.Rotation(yaw=yaw))
 
 
 def getLinearPose(t, T, pose1, pose2):
@@ -73,9 +70,9 @@ def getLinearPose(t, T, pose1, pose2):
     tt = t / T
 
     x, y, z = tt*x2 + (1-tt)*x1, tt*y2 + (1-tt)*y1, tt*z2 + (1-tt)*z1
-    roll = np.rad2deg( basic_tools.pi2pi(roll2-roll1) * t + roll1 )
-    pitch = np.rad2deg( basic_tools.pi2pi(pitch2-pitch1) * t + pitch1 )
-    yaw = np.rad2deg( basic_tools.pi2pi(yaw2-yaw1) * t + yaw1 )
+    roll = np.rad2deg( basic_tools.pi2pi(roll2-roll1) * tt + roll1 )
+    pitch = np.rad2deg( basic_tools.pi2pi(pitch2-pitch1) * tt + pitch1 )
+    yaw = np.rad2deg( basic_tools.pi2pi(yaw2-yaw1) * tt + yaw1 )
     location = carla.Location(x=x, y=y, z=z)
     rotation = carla.Rotation(roll=roll, pitch=pitch, yaw=yaw)
     return carla.Transform(location, rotation)
@@ -111,22 +108,16 @@ class CollectPerspectiveImage(object):
 
 
     def getPM(self, traj_pose_list, vehicle_transform, image):
-        '''
-        Args: 
-            time_stamp: time.time()
-            pose: carla.Transform
-        '''
 
         empty_image = copy.deepcopy(self.empty_image)
-        # print(empty_image)
-        # print(self.camera_params.K, self.camera_params.R, self.camera_params.t)
-        # test_pixel_vec = CoordinateTransformation.world3DToImage2D(np.array([0,0,0]).reshape(3,1), self.camera_params.K, self.camera_params.R, self.camera_params.t)
-        # print(test_pixel_vec.T)
 
+        tick1 = time.time()
 
         for (time_step, traj_pose) in traj_pose_list:
             self.drawLineInImage(traj_pose, vehicle_transform, empty_image)
 
+        tick2 = time.time()
+        tick_pose, tick_draw = 0.0, 0.0
 
         pose_number = len(traj_pose_list)
         longitudinal_array = np.logspace(self.longitudinal_sample_number_near, self.longitudinal_sample_number_far, pose_number-1, base=2)
@@ -135,17 +126,24 @@ class CollectPerspectiveImage(object):
             t1, pose1 = traj_pose_list[i][0],   traj_pose_list[i][1]
             t2, pose2 = traj_pose_list[i+1][0], traj_pose_list[i+1][1]
             T = t2-t1
-            traj = getTraj(pose1, pose2, T)
+            # traj = getTraj(pose1, pose2, T)
             time_array = np.linspace(0, T, round(longitudinal_array[i]))
             # print(pose1.location, pose1.rotation)
             for t in time_array:
+                tick_1 = time.time()
                 pose = getLinearPose(t, T, pose1, pose2)
-                # print(pose.location, pose.rotation)
+                tick_2 = time.time()
                 self.drawLineInImage(pose, vehicle_transform, empty_image)
-            # print(pose2.location, pose2.rotation)
-            # print('\n\n')
+                tick_3 = time.time()
+                tick_pose += tick_2 - tick_1
+                tick_draw += tick_3 - tick_2
 
-        # print('flag')
+
+        tick3 = time.time()
+        print('time real: ' + str(tick2-tick1))
+        print('time interpolate: ' + str(tick3-tick2))
+        print('    time pose: ' +str(tick_pose))
+        print('    time draw: ' +str(tick_draw))
 
 
         return empty_image

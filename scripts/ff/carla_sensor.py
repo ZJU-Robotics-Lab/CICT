@@ -1,15 +1,15 @@
 
 # carla_sensor.py
 
-# import rospy, tf
+import rospy, tf
 from std_msgs.msg import Header
 from sensor_msgs.msg import Image
 from sensor_msgs.point_cloud2 import create_cloud_xyz32
 from geometry_msgs.msg import TransformStamped
 
 import sys
-# sys.path.insert(0, '/home/zdk/miniconda3/envs/ros_demo/lib/python3.7/site-packages')
-# sys.path.insert(0, '/home/zdk/miniconda3/envs/ros_demo/catkin_ws/devel_isolated/cv_bridge/lib/python3/dist-packages')
+sys.path.insert(0, '/home/zdk/miniconda3/envs/ros_demo/lib/python3.7/site-packages')
+sys.path.insert(0, '/home/zdk/miniconda3/envs/ros_demo/catkin_ws/devel_isolated/cv_bridge/lib/python3/dist-packages')
 
 import cv2
 from cv_bridge import CvBridge
