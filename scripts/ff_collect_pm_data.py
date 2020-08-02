@@ -5,7 +5,7 @@ from os.path import join, dirname
 sys.path.insert(0, join(dirname(__file__), '..'))
 
 import simulator
-simulator.load('/home/zdk/CARLA_0.9.9.4')
+simulator.load('/home/wang/CARLA_0.9.9.4')
 from simulator import config
 import carla
 import numpy as np
@@ -13,7 +13,7 @@ import argparse
 import time
 
 MAX_SPEED = 20
-TRAJ_LENGTH = 10
+TRAJ_LENGTH = 25
 vehicle_width = 2.2
 longitudinal_sample_number_near = 8
 longitudinal_sample_number_far = 0.5
@@ -26,7 +26,7 @@ parser.add_argument('-n', '--num', type=int, default=100000, help='total number'
 args = parser.parse_args()
 data_index = args.data
 
-save_path = '/home/zdk/DATASET/CARLA/'+str(data_index)+'/'
+save_path = '/media/wang/DATASET/CARLA/'+str(data_index)+'/'
 
 sensor_dict = {
     'camera':{
@@ -40,8 +40,6 @@ sensor_dict = {
 }
 
 
-
-
 from ff.system import env_path
 env_path.remove_python2_path(sys)
 import cv2
@@ -49,17 +47,16 @@ env_path.append_python2_path(sys)
 
 from ff.collect_pm import CollectPerspectiveImage
 from ff.carla_sensor import Sensor, CarlaSensorMaster
-from sensor_msgs.msg import Image
-from ff.carla_sensor import CarlaSensorDataConversion
 
+def mkdir(path):
+    if not os.path.exists(save_path+path):
+        os.makedirs(save_path+path)
+        
 def read_img(time_stamp):
     img_path = save_path + 'img/'
     file_name = str(time_stamp) + '.png'
-
     img = cv2.imread(img_path + file_name)
-    # print(img.shape)
     return img
-
 
 def read_state():
     state_path = save_path + 'state/'
@@ -68,7 +65,7 @@ def read_state():
     pose_file = state_path + 'pos.txt'
     time_stamp_list = []
     time_stamp_pose_dict = dict()
-    file = open(pose_file) 
+    file = open(pose_file, 'r') 
     while 1:
         line = file.readline()
         if not line:
@@ -98,10 +95,7 @@ def read_state():
     
 
 def distance(pose1, pose2):
-    dx = pose1.location.x - pose2.location.x
-    dy = pose1.location.y - pose2.location.y
-    dz = pose1.location.z - pose2.location.z
-    return dx**2 + dy**2 + dz**2
+    return pose1.location.distance(pose2.location)
 
 def find_traj_with_fix_length(start_index, time_stamp_list, time_stamp_pose_dict):
     length = 0.0
@@ -123,14 +117,8 @@ class Param(object):
         self.lateral_sample_number = lateral_sample_number
         self.lateral_step_factor = lateral_step_factor
 
-class Segment(object):
-    def __init__(pose, param):
-
-
-        self.start, self.end = start, end
-
-
 def main():
+    mkdir(save_path+'pm/')
     time_stamp_list, time_stamp_pose_dict = read_state()
     time_stamp_list.sort()
 
@@ -141,9 +129,6 @@ def main():
     sensor = Sensor(sensor_dict['camera']['transform'], config['camera'])
     sensor_master = CarlaSensorMaster(sensor, sensor_dict['camera']['transform'], binded=True)
     collect_perspective = CollectPerspectiveImage(param, sensor_master)
-
-    # img_pub = rospy.Publisher('~img', Image, queue_size=1)
-    # image_pub = rospy.Publisher('~image', Image, queue_size=1)
 
     for index, time_stamp in enumerate(time_stamp_list):
         end_index = find_traj_with_fix_length(index, time_stamp_list, time_stamp_pose_dict)
@@ -158,28 +143,21 @@ def main():
             time_stamp_pose = time_stamp_pose_dict[time_stamp_i]
             traj_pose_list.append((time_stamp_i, time_stamp_pose))
 
-        # print('\n\n')
-
         img = read_img(time_stamp)
-        t1 = time.time()
+        #t1 = time.time()
         empty_image = collect_perspective.getPM(traj_pose_list, vehicle_transform, img)
-        t2 = time.time()
-        print('time total: ' + str(t2-t1))
-        print()
+        #t2 = time.time()
 
-        # img_pub.publish(CarlaSensorDataConversion.cv2ImageToSensorImage(img, 'img'))
-        # image_pub.publish(CarlaSensorDataConversion.cv2ImageToSensorImage(empty_image, 'image'))
-
-        # print('\n\n')
-
-
-
-# import rospy
-
+        #cv2.imshow('empty_image', empty_image)
+        #cv2.waitKey(3)
+        cv2.imwrite(save_path+'pm/'+str(time_stamp)+'.png', empty_image)
+        #print('time total: ' + str(t2-t1))
+        #print()
 
 if __name__ == '__main__':
     # rospy.init_node('collect_pm')
     try:
         main()
     except KeyboardInterrupt:
-        exit(0)
+        #exit(0)
+        pass
