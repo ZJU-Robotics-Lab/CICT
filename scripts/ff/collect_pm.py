@@ -9,7 +9,7 @@ from .camera.parameters import CameraParams, IntrinsicParams, ExtrinsicParams
 from .camera.coordinate_transformation import CoordinateTransformation, rotationMatrix3D
 from .camera import basic_tools
 
-
+np.set_printoptions(suppress=True)
 # def printVariable(variable):
 
 
@@ -171,9 +171,10 @@ class CollectPerspectiveImage(object):
         flag1 = (start_pixel_vec >= self.min_pixel).all() and (start_pixel_vec < self.max_pixel).all()
         flag2 = (end_pixel_vec >= self.min_pixel).all() and (end_pixel_vec < self.max_pixel).all()
         if not flag1 and not flag2:
-            # print('no use')
+            # print('no use: ' + str(start_vehicle_vec.T))
             return
 
+        # print('use: ' + str(start_vehicle_vec.T))
         length = np.linalg.norm(end_pixel_vec - start_pixel_vec)
         direction = (end_pixel_vec - start_pixel_vec) / length
         lateral_sample_number = round(length / self.lateral_step_factor) + 1
@@ -183,7 +184,7 @@ class CollectPerspectiveImage(object):
             pixel_vec = start_pixel_vec + distance * direction
             x_pixel, y_pixel = round(pixel_vec[0,0]), round(pixel_vec[1,0])
             if x_pixel >= 0 and y_pixel >= 0 and x_pixel < self.img_height and y_pixel < self.img_width:
-                empty_image[x_pixel,y_pixel,:] = 255
+                empty_image[int(x_pixel),int(y_pixel),:] = 255
 
         return
 
