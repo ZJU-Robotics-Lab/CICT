@@ -152,6 +152,29 @@ class CoordinateTransformation(object):
     def image2DToWorld3D(image_vec, K, R, t):
         r = np.vstack((image_vec, 1))
         b = np.vstack(( basic_tools.np_dot(K, CoordinateTransformation.I, t), 0 ))
-        A = np.vstack((np.hstack((basic_tools.np_dot(K, CoordinateTransformation.I, R.T), -r)), np.array([0,0,1,0]).reshape(1,4)))
+        temp1 = basic_tools.np_dot(K, CoordinateTransformation.I, R.T)
+        temp2 = np.hstack((temp1, -r))
+        A = np.vstack((temp2, np.array([[0,0,1,0]])))
         world_vec = np.dot(np.linalg.inv(A), b)
         return world_vec[:3]
+    
+    @staticmethod
+    def image2DToWorld3D2(image_vec, K, R, t):
+        r = np.vstack((image_vec, np.ones((1,image_vec.shape[1]))))
+        b = np.vstack(( basic_tools.np_dot(K, CoordinateTransformation.I, t), 0 ))
+        
+        temp1 = basic_tools.np_dot(K, CoordinateTransformation.I, R.T)
+        temp1 = np.expand_dims(temp1, axis=2).repeat(image_vec.shape[1], axis=2)
+        r = np.expand_dims(r, axis=1)
+
+        temp1 = np.transpose(temp1, (2,0,1))
+        r = np.transpose(r, (2,0,1))
+        
+        temp2 = np.concatenate((temp1, -r),axis=2)
+        temp3 = np.array([[0,0,1,0]])
+        temp3 = np.expand_dims(temp3, axis=2).repeat(image_vec.shape[1], axis=2)
+        temp3 = np.transpose(temp3, (2,0,1))
+        
+        A = np.concatenate((temp2, temp3),axis=1)
+        world_vec = np.dot(np.linalg.inv(A), b)
+        return world_vec[:,:3]

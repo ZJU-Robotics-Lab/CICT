@@ -8,7 +8,6 @@ import simulator
 simulator.load('/home/wang/CARLA_0.9.9.4')
 from simulator import config
 import carla
-import numpy as np
 import argparse
 import time
 
@@ -38,7 +37,6 @@ sensor_dict = {
         # 'callback':lidar_callback,
     },
 }
-
 
 from ff.system import env_path
 env_path.remove_python2_path(sys)
@@ -118,7 +116,7 @@ class Param(object):
         self.lateral_step_factor = lateral_step_factor
 
 def main():
-    mkdir(save_path+'pm/')
+    mkdir('pm/')
     time_stamp_list, time_stamp_pose_dict = read_state()
     time_stamp_list.sort()
 

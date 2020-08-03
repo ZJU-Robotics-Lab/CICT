@@ -61,6 +61,4 @@ class CameraParams(object):
         # (coordinate) t: camera in world, R: camera to world
         self.t = np.array([[extrinsic_params.x, extrinsic_params.y, extrinsic_params.z]]).T
         self.R = rotationMatrix3D(extrinsic_params.roll, extrinsic_params.pitch, extrinsic_params.yaw)
-        
-
 
