@@ -12,8 +12,9 @@ import numpy as np
 import argparse
 import time
 import cv2
+from tqdm import tqdm
 
-from ff_collect_pm_data import sensor_dict, mkdir
+from ff_collect_pm_data import sensor_dict
 from ff.collect_ipm import InversePerspectiveMapping
 from ff.carla_sensor import Sensor, CarlaSensorMaster
 
@@ -30,6 +31,10 @@ data_index = args.data
 
 save_path = '/media/wang/DATASET/CARLA/'+str(data_index)+'/'
 
+def mkdir(path):
+    if not os.path.exists(save_path+path):
+        os.makedirs(save_path+path)
+        
 mkdir('ipm/')
 
 def read_pm_time_stamp(dir_path):
@@ -134,23 +139,27 @@ def main():
     sensor_master = CarlaSensorMaster(sensor, sensor_dict['camera']['transform'], binded=True)
     inverse_perspective_mapping = InversePerspectiveMapping(param, sensor_master)
 
-    start = 26300
+    start = 0
     end = len(time_stamp_list)
     
-    for i in range(start, end, 4):
-        time_stamp = time_stamp_list[i]
-        pm_image = read_image(time_stamp)
-        pcd = read_pcd(time_stamp)
+    for i in tqdm(range(start, end, 3)):
+        try:
+            time_stamp = time_stamp_list[i]
+            pm_image = read_image(time_stamp)
+            pcd = read_pcd(time_stamp)
+    
+            #tick1 = time.time()
+            ipm_image = inverse_perspective_mapping.getIPM(pm_image)
+            #tick2 = time.time()
+    
+            img = get_cost_map(ipm_image, pcd)
+            cv2.imwrite(save_path+'ipm/'+str(time_stamp)+'.png', img)
+            #cv2.imshow('ipm_image', img)
+            #cv2.waitKey(16)
+            #print('time total: ' + str(tick2-tick1))
+        except:
+            pass
 
-        tick1 = time.time()
-        ipm_image = inverse_perspective_mapping.getIPM(pm_image)
-        tick2 = time.time()
-
-        img = get_cost_map(ipm_image, pcd)
-        
-        cv2.imshow('ipm_image', img)
-        cv2.waitKey(16)
-        print('time total: ' + str(tick2-tick1))
 
 if __name__ == '__main__':
     try:
