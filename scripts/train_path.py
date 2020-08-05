@@ -10,8 +10,9 @@ import time
 import random
 import argparse
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageDraw
 from datetime import datetime
+import matplotlib.pyplot as plt
 
 import torch
 from torch.autograd import grad
@@ -29,8 +30,11 @@ torch.set_num_threads(16)
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--test_mode', type=bool, default=False, help='test model switch')
-parser.add_argument('--dataset_name', type=str, default="with_v0_01", help='name of the dataset')
+parser.add_argument('--test_mode', type=bool, default=True, help='test model switch')
+parser.add_argument('--dataset_name', type=str, default="tanh01", help='name of the dataset')
+parser.add_argument('--width', type=int, default=400, help='image width')
+parser.add_argument('--height', type=int, default=200, help='image height')
+parser.add_argument('--scale', type=float, default=25., help='longitudinal length')
 parser.add_argument('--batch_size', type=int, default=128, help='size of the batches')
 parser.add_argument('--weight_decay', type=float, default=5e-4, help='adam: weight_decay')
 parser.add_argument('--lr', type=float, default=3e-4, help='adam: learning rate')
@@ -46,6 +50,7 @@ if opt.test_mode: opt.batch_size = 1
 
 log_path = 'log/'+opt.dataset_name+'/'
 os.makedirs('result/saved_models/%s' % opt.dataset_name, exist_ok=True)
+os.makedirs('result/output/%s' % opt.dataset_name, exist_ok=True)
 
 def write_params():
     with open(log_path+'params.cfg', 'w+') as file:
@@ -59,7 +64,14 @@ def write_params():
         file.write('kld loss: ' + str(opt.gamma2)+'\n')
         file.write('max_dist: ' + str(opt.max_dist)+'\n')
         file.write('********************************\n\n')
-        
+    
+def angle_normal(angle):
+    while angle >= np.pi:
+        angle -= 2*np.pi
+    while angle <= -np.pi:
+        angle += 2*np.pi
+    return angle
+    
 class CostMapDataset(Dataset):
     def __init__(self, data_index=[1,4,5,8]):
         self.data_index = data_index
@@ -120,10 +132,18 @@ class CostMapDataset(Dataset):
         file_names.sort()
         self.files_dict[index] = file_names
 
+    def tf_pose(self, data_index, ts, yaw, x_0, y_0):
+        x_t = self.pose_dict[data_index][ts][0]
+        y_t = self.pose_dict[data_index][ts][1]
+        dx = x_t - x_0
+        dy = y_t - y_0
+        x = np.cos(yaw)*dx + np.sin(yaw)*dy
+        y = np.cos(yaw)*dy - np.sin(yaw)*dx
+        return x, y
+        
     def __getitem__(self, index):
         data_index = random.sample(self.data_index, 1)[0]
-        flag = True
-        while flag:
+        while True:
             file_name = random.sample(self.files_dict[data_index][500:-1000], 1)[0]
             image_path = '/media/wang/DATASET/CARLA/'+str(data_index)+'/ipm/'+file_name+'.png'
             img = Image.open(image_path).convert('L')
@@ -136,9 +156,11 @@ class CostMapDataset(Dataset):
             self.files_dict[data_index].sort()
             ts_index = self.files_dict[data_index].index(file_name)
             ts_list = []
-
+            x_list = []
+            y_list = []
             for i in range(ts_index+1, len(self.files_dict[data_index])-500):
                 ts = self.files_dict[data_index][i]
+                
                 _x_t = self.pose_dict[data_index][ts][0]
                 _y_t = self.pose_dict[data_index][ts][1]
                 distance = np.sqrt((x_0-_x_t)**2+(y_0-_y_t)**2)
@@ -148,7 +170,11 @@ class CostMapDataset(Dataset):
                     if distance < 0.03:
                         pass
                     else:
+                        x_, y_ = self.tf_pose(data_index, ts, yaw, x_0, y_0)
+                        x_list.append(x_)
+                        y_list.append(y_)
                         ts_list.append(ts)
+                        
             if len(ts_list) == 0:
                 continue
             else:
@@ -161,29 +187,87 @@ class CostMapDataset(Dataset):
         vx_0 = np.cos(yaw)*_vx_0 + np.sin(yaw)*_vy_0
         #vy_0 = np.cos(yaw)*_vy_0 - np.sin(yaw)*_vx_0
         v_0 = torch.FloatTensor([vx_0])
-        
-        x_t = self.pose_dict[data_index][ts][0]
-        y_t = self.pose_dict[data_index][ts][1]
-
-        dx = x_t - x_0
-        dy = y_t - y_0
-        
-        x = np.cos(yaw)*dx + np.sin(yaw)*dy
-        y = np.cos(yaw)*dy - np.sin(yaw)*dx
+        x, y = self.tf_pose(data_index, ts, yaw, x_0, y_0)
         # [-1, 1]
         xy = torch.FloatTensor([x/self.max_dist, y/self.max_dist])
         
+        yaw_t = angle_normal(np.deg2rad(self.pose_dict[data_index][ts][3]) - yaw)
+        # [-1, 1]
+        yaw_t = torch.FloatTensor([yaw_t/np.pi])
+    
         _vx = self.vel_dict[data_index][ts][0]
         _vy = self.vel_dict[data_index][ts][1]
         vx = np.cos(yaw)*_vx + np.sin(yaw)*_vy
         vy = np.cos(yaw)*_vy - np.sin(yaw)*_vx
         
         vxy = torch.FloatTensor([vx, vy])
-
-        return {'img': img, 't': t, 'xy':xy, 'vxy':vxy, 'v_0':v_0}
+        x_list = torch.FloatTensor(x_list)
+        y_list = torch.FloatTensor(y_list)
+        return {'img': img, 't': t, 'xy':xy, 'vxy':vxy, 'v_0':v_0, 'yaw_t': yaw_t, 'x_list':x_list, 'y_list':y_list}
 
     def __len__(self):
         return 100000000000
+    
+def xy2uv(x, y):
+    pixs_per_meter = opt.height/opt.scale
+    u = (opt.height-x*pixs_per_meter).astype(int)
+    v = (y*pixs_per_meter+opt.width//2).astype(int)
+    mask = np.where((u >= 0)&(u < opt.height))[0]
+    u = u[mask]
+    v = v[mask]
+    mask = np.where((v >= 0)&(v < opt.width))[0]
+    u = u[mask]
+    v = v[mask]
+    return u, v
+    
+def draw_traj():
+    model.eval()
+    batch = next(eval_samples)
+    img = batch['img'].clone().data.numpy().squeeze()*255+127
+    
+    t = torch.arange(0, 0.99, 0.01).unsqueeze(1).to(device)
+    t.requires_grad = True
+    
+    batch['img'] = batch['img'].expand(len(t),1,200, 400)
+    batch['img'] = batch['img'].to(device)
+    batch['t'] = batch['t'].to(device)
+    batch['v_0'] = batch['v_0'].expand(len(t),1)
+    batch['v_0'] = batch['v_0'].to(device)
+    batch['xy'] = batch['xy'].to(device)
+    batch['vxy'] = batch['vxy'].to(device)
+    batch['img'].requires_grad = True
+    batch['t'].requires_grad = True
+    
+    #output = model(batch['img'], t, batch['v_0'])
+    output = model(batch['img'], t)
+    
+    img = Image.fromarray(img).convert("RGB")
+    draw =ImageDraw.Draw(img)
+    
+    real_x = batch['x_list'].squeeze().data.numpy()
+    real_y = batch['y_list'].squeeze().data.numpy()
+    real_u, real_v = xy2uv(real_x, real_y)
+    
+    for i in range(len(real_u)-1):
+        draw.line((real_v[i], real_u[i], real_v[i+1], real_u[i+1]), 'blue')
+        draw.line((real_v[i]+1, real_u[i], real_v[i+1]+1, real_u[i+1]), 'blue')
+        draw.line((real_v[i]-1, real_u[i], real_v[i+1]-1, real_u[i+1]), 'blue')
+        
+    result = output.data.cpu().numpy()
+    x = opt.max_dist*result[:,0]
+    y = opt.max_dist*result[:,1]
+    u, v = xy2uv(x, y)
+
+
+    for i in range(len(u)-1):
+        draw.line((v[i], u[i], v[i+1], u[i+1]), 'red')
+        draw.line((v[i]+1, u[i], v[i+1]+1, u[i+1]), 'red')
+        draw.line((v[i]-1, u[i], v[i+1]-1, u[i+1]), 'red')
+    
+    img.save(('result/output/%s/' % opt.dataset_name)+str(time.time())+'.png')
+    
+    model.train()
+    
     
 def test_model(total_step):
     model.eval()
@@ -197,8 +281,8 @@ def test_model(total_step):
     batch['img'].requires_grad = True
     batch['t'].requires_grad = True
 
-    #output = model(batch['img'], batch['t'])
-    output = model(batch['img'], batch['t'], batch['v_0'])
+    output = model(batch['img'], batch['t'])
+    #output = model(batch['img'], batch['t'], batch['v_0'])
     vx = grad(output[:,0].sum(), batch['t'], create_graph=True)[0]
     vy = grad(output[:,1].sum(), batch['t'], create_graph=True)[0]
     output_vxy = (opt.max_dist/opt.max_t)*torch.cat([vx, vy], dim=1)
@@ -234,8 +318,8 @@ def eval_error(total_step):
         batch['img'].requires_grad = True
         batch['t'].requires_grad = True
     
-        #output = model(batch['img'], batch['t'])
-        output = model(batch['img'], batch['t'], batch['v_0'])
+        output = model(batch['img'], batch['t'])
+        #output = model(batch['img'], batch['t'], batch['v_0'])
         vx = (opt.max_dist/opt.max_t)*grad(output[:,0].sum(), batch['t'], create_graph=True)[0]
         vy = (opt.max_dist/opt.max_t)*grad(output[:,1].sum(), batch['t'], create_graph=True)[0]
         
@@ -272,8 +356,9 @@ def eval_error(total_step):
         logger.add_scalar('eval/rel_vy', sum(rel_vy)/len(rel_vy), total_step)
     model.train()
     
+
 model = Model().to(device)
-#model.load_state_dict(torch.load('result/saved_models/VAE01/model_17000.pth'))
+model.load_state_dict(torch.load('result/saved_models/tanh01/model_1000000.pth'))
 train_loader = DataLoader(CostMapDataset(), batch_size=opt.batch_size, shuffle=False, num_workers=opt.n_cpu)
 test_loader = DataLoader(CostMapDataset(data_index=[10]), batch_size=opt.batch_size, shuffle=False, num_workers=opt.n_cpu)
 test_samples = iter(test_loader)
@@ -294,6 +379,8 @@ if opt.test_mode:
     
 print('Start to train ...')
 for i, batch in enumerate(train_loader):
+    for _ in range(100): draw_traj()
+    break
     total_step += 1
     if opt.test_mode: batch = next(test_samples)
 
@@ -305,7 +392,8 @@ for i, batch in enumerate(train_loader):
     batch['img'].requires_grad = True
     batch['t'].requires_grad = True
 
-    output = model(batch['img'], batch['t'], batch['v_0'])
+    output = model(batch['img'], batch['t'])
+    #output = model(batch['img'], batch['t'], batch['v_0'])
     vx = grad(output[:,0].sum(), batch['t'], create_graph=True)[0]
     vy = grad(output[:,1].sum(), batch['t'], create_graph=True)[0]
     output_vxy = (opt.max_dist/opt.max_t)*torch.cat([vx, vy], dim=1)
@@ -339,5 +427,3 @@ for i, batch in enumerate(train_loader):
         
         if total_step % opt.checkpoint_interval == 0:
             torch.save(model.state_dict(), 'result/saved_models/%s/model_%d.pth'%(opt.dataset_name, total_step))
-        
-if opt.test_mode: print('x:', opt.max_dist*sum(abs_x)/len(abs_x), 'm, y:', opt.max_dist*sum(abs_y)/len(abs_y), 'm')
