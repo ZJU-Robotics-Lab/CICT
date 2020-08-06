@@ -48,7 +48,7 @@ opt = parser.parse_args()
 if opt.test_mode: opt.batch_size = 1
 
 description = 'Use tanh'
-log_path = 'log/'+opt.dataset_name+'/'
+log_path = 'result/log/'+opt.dataset_name+'/'
 os.makedirs('result/saved_models/%s' % opt.dataset_name, exist_ok=True)
 os.makedirs('result/output/%s' % opt.dataset_name, exist_ok=True)
 
