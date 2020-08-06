@@ -3,6 +3,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from siren_pytorch import SirenNet
 
 def weights_init(m):
     if isinstance(m, nn.Conv2d):
@@ -215,10 +216,18 @@ class CNN_SIN(nn.Module):
     def __init__(self):
         super(CNN_SIN, self).__init__()
         self.cnn = CNN()
-        self.mlp = SIN_MLP(input_dim=256+1)
+        self.siren = SirenNet(
+            dim_in = 256+1,                        # input dimension, ex. 2d coor
+            dim_hidden = 256,                  # hidden dimension
+            dim_out = 2,                       # output dimension, ex. rgb value
+            num_layers = 5,                    # number of layers
+            final_activation = nn.Tanh(),      # activation of final layer (nn.Identity() for direct output)
+            w0_initial = 30.                   # different signals may require different omega_0 in the first layer - this is a hyperparameter
+        )
+        #self.mlp = SIN_MLP(input_dim=256+1)
     
     def forward(self, x, t):
         x = self.cnn(x)
         h = torch.cat([x, t], dim=1)
-        x = self.mlp(h)
+        x = self.siren(h)
         return x

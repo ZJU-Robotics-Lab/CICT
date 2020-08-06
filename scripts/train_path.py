@@ -5,22 +5,21 @@ from os.path import join, dirname
 sys.path.insert(0, join(dirname(__file__), '..'))
 
 import os
-import glob
 import time
 import random
 import argparse
 import numpy as np
 from PIL import Image, ImageDraw
 from datetime import datetime
-import matplotlib.pyplot as plt
 
 import torch
 from torch.autograd import grad
-from torch.utils.data import Dataset, DataLoader
-import torchvision.transforms as transforms
+from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
 from learning.path_model import Model, VAE, CNN_SIN
+from learning.costmap_dataset import CostMapDataset
+from utils import write_params
 
 random.seed(datetime.now())
 torch.manual_seed(666)
@@ -30,15 +29,15 @@ torch.set_num_threads(16)
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--test_mode', type=bool, default=True, help='test model switch')
-parser.add_argument('--dataset_name', type=str, default="tanh01", help='name of the dataset')
+parser.add_argument('--test_mode', type=bool, default=False, help='test model switch')
+parser.add_argument('--dataset_name', type=str, default="tanh04", help='name of the dataset')
 parser.add_argument('--width', type=int, default=400, help='image width')
 parser.add_argument('--height', type=int, default=200, help='image height')
 parser.add_argument('--scale', type=float, default=25., help='longitudinal length')
 parser.add_argument('--batch_size', type=int, default=128, help='size of the batches')
 parser.add_argument('--weight_decay', type=float, default=5e-4, help='adam: weight_decay')
 parser.add_argument('--lr', type=float, default=3e-4, help='adam: learning rate')
-parser.add_argument('--gamma', type=float, default=0.2, help='xy and vxy loss trade off')
+parser.add_argument('--gamma', type=float, default=0.5, help='xy and vxy loss trade off')
 parser.add_argument('--gamma2', type=float, default=0., help='KLD loss trade off')
 parser.add_argument('--n_cpu', type=int, default=16, help='number of cpu threads to use during batch generation')
 parser.add_argument('--checkpoint_interval', type=int, default=2000, help='interval between model checkpoints')
@@ -48,166 +47,28 @@ parser.add_argument('--max_t', type=float, default=5., help='max time')
 opt = parser.parse_args()
 if opt.test_mode: opt.batch_size = 1
 
+description = 'Use tanh'
 log_path = 'log/'+opt.dataset_name+'/'
 os.makedirs('result/saved_models/%s' % opt.dataset_name, exist_ok=True)
 os.makedirs('result/output/%s' % opt.dataset_name, exist_ok=True)
 
-def write_params():
-    with open(log_path+'params.cfg', 'w+') as file:
-        file.write('********************************')
-        file.write('time: '+time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())+'\n')
-        file.write('dataset_name: ' + str(opt.dataset_name)+'\n')
-        file.write('batch_size: ' + str(opt.batch_size)+'\n')
-        file.write('lr: ' + str(opt.lr)+'\n')
-        file.write('weight_decay: ' + str(opt.weight_decay)+'\n')
-        file.write('vxy loss: ' + str(opt.gamma)+'\n')
-        file.write('kld loss: ' + str(opt.gamma2)+'\n')
-        file.write('max_dist: ' + str(opt.max_dist)+'\n')
-        file.write('********************************\n\n')
+if not opt.test_mode:
+    logger = SummaryWriter(log_dir=log_path)
+    write_params(log_path, parser, description)
     
-def angle_normal(angle):
-    while angle >= np.pi:
-        angle -= 2*np.pi
-    while angle <= -np.pi:
-        angle += 2*np.pi
-    return angle
-    
-class CostMapDataset(Dataset):
-    def __init__(self, data_index=[1,4,5,8]):
-        self.data_index = data_index
-        self.max_dist = opt.max_dist
-        self.max_t = opt.max_t
-        transforms_ = [ transforms.Resize((200, 400), Image.BICUBIC),
-            transforms.ToTensor(),
-            transforms.Normalize((0.5), (0.5))
-            ]
-        
-        self.transform = transforms.Compose(transforms_)
-        self.dataset_path = '/media/wang/DATASET/CARLA/'
-        self.pose_dict = {}
-        self.vel_dict = {}
-        self.files_dict = {}
-        self.total_len = 0
-        
-        for index in self.data_index:
-            self.read_pose(index)
-            self.read_vel(index)
-            self.read_img(index)
-        
-    def read_pose(self, index):
-        file_path = self.dataset_path+str(index)+'/state/pos.txt'
-        ts_dict = {}
-        with open(file_path, 'r') as file:
-            lines = file.readlines()
-            for line in lines:
-                sp_line = line.split()
-                ts = sp_line[0]
-                x = float(sp_line[1])
-                y = float(sp_line[2])
-                z = float(sp_line[3])
-                yaw = float(sp_line[5])
-                ts_dict[ts] = [x, y, z, yaw]
-        self.pose_dict[index] = ts_dict
-        
-    def read_vel(self, index):
-        file_path = self.dataset_path+str(index)+'/state/vel.txt'
-        ts_dict = {}
-        with open(file_path, 'r') as file:
-            lines = file.readlines()
-            for line in lines:
-                sp_line = line.split()
-                ts = sp_line[0]
-                vx = float(sp_line[1])
-                vy = float(sp_line[2])
-                vz = float(sp_line[3])
-                ts_dict[ts] = [vx, vy, vz]
-        self.vel_dict[index] = ts_dict
-    
-    def read_img(self, index):
-        files = glob.glob(self.dataset_path+str(index)+'/ipm/*.png')
-        file_names = []
-        for file in files:
-            file_name = file.split('/')[7][:-4]
-            file_names.append(file_name)
-        file_names.sort()
-        self.files_dict[index] = file_names
+model = Model().to(device)
+model.load_state_dict(torch.load('result/saved_models/tanh03/model_80000.pth'))
+train_loader = DataLoader(CostMapDataset(data_index=[1,4,5,8], opt=opt), batch_size=opt.batch_size, shuffle=False, num_workers=opt.n_cpu)
 
-    def tf_pose(self, data_index, ts, yaw, x_0, y_0):
-        x_t = self.pose_dict[data_index][ts][0]
-        y_t = self.pose_dict[data_index][ts][1]
-        dx = x_t - x_0
-        dy = y_t - y_0
-        x = np.cos(yaw)*dx + np.sin(yaw)*dy
-        y = np.cos(yaw)*dy - np.sin(yaw)*dx
-        return x, y
-        
-    def __getitem__(self, index):
-        data_index = random.sample(self.data_index, 1)[0]
-        while True:
-            file_name = random.sample(self.files_dict[data_index][500:-1000], 1)[0]
-            image_path = '/media/wang/DATASET/CARLA/'+str(data_index)+'/ipm/'+file_name+'.png'
-            img = Image.open(image_path).convert('L')
-            img = self.transform(img)
-            
-            x_0 = self.pose_dict[data_index][file_name][0]
-            y_0 = self.pose_dict[data_index][file_name][1]
-            yaw = np.deg2rad(self.pose_dict[data_index][file_name][3])
-            
-            self.files_dict[data_index].sort()
-            ts_index = self.files_dict[data_index].index(file_name)
-            ts_list = []
-            x_list = []
-            y_list = []
-            for i in range(ts_index+1, len(self.files_dict[data_index])-500):
-                ts = self.files_dict[data_index][i]
-                
-                _x_t = self.pose_dict[data_index][ts][0]
-                _y_t = self.pose_dict[data_index][ts][1]
-                distance = np.sqrt((x_0-_x_t)**2+(y_0-_y_t)**2)
-                if distance > self.max_dist or (float(ts)-float(file_name) > self.max_t):
-                    break
-                else:
-                    if distance < 0.03:
-                        pass
-                    else:
-                        x_, y_ = self.tf_pose(data_index, ts, yaw, x_0, y_0)
-                        x_list.append(x_)
-                        y_list.append(y_)
-                        ts_list.append(ts)
-                        
-            if len(ts_list) == 0:
-                continue
-            else:
-                ts = random.sample(ts_list, 1)[0]
-                break
-        # [0 ~ 1]
-        t = torch.FloatTensor([float(ts)/self.max_t - float(file_name)/self.max_t])
-        _vx_0 = self.vel_dict[data_index][file_name][0]
-        _vy_0 = self.vel_dict[data_index][file_name][1]
-        vx_0 = np.cos(yaw)*_vx_0 + np.sin(yaw)*_vy_0
-        #vy_0 = np.cos(yaw)*_vy_0 - np.sin(yaw)*_vx_0
-        v_0 = torch.FloatTensor([vx_0])
-        x, y = self.tf_pose(data_index, ts, yaw, x_0, y_0)
-        # [-1, 1]
-        xy = torch.FloatTensor([x/self.max_dist, y/self.max_dist])
-        
-        yaw_t = angle_normal(np.deg2rad(self.pose_dict[data_index][ts][3]) - yaw)
-        # [-1, 1]
-        yaw_t = torch.FloatTensor([yaw_t/np.pi])
-    
-        _vx = self.vel_dict[data_index][ts][0]
-        _vy = self.vel_dict[data_index][ts][1]
-        vx = np.cos(yaw)*_vx + np.sin(yaw)*_vy
-        vy = np.cos(yaw)*_vy - np.sin(yaw)*_vx
-        
-        vxy = torch.FloatTensor([vx, vy])
-        x_list = torch.FloatTensor(x_list)
-        y_list = torch.FloatTensor(y_list)
-        return {'img': img, 't': t, 'xy':xy, 'vxy':vxy, 'v_0':v_0, 'yaw_t': yaw_t, 'x_list':x_list, 'y_list':y_list}
+test_loader = DataLoader(CostMapDataset(data_index=[10], opt=opt), batch_size=opt.batch_size, shuffle=False, num_workers=opt.n_cpu)
+test_samples = iter(test_loader)
 
-    def __len__(self):
-        return 100000000000
-    
+eval_loader = DataLoader(CostMapDataset(data_index=[10], opt=opt, evalmode=True), batch_size=1, shuffle=False, num_workers=1)
+eval_samples = iter(eval_loader)
+
+criterion = torch.nn.MSELoss().to(device)
+optimizer = torch.optim.Adam(model.parameters(), lr=opt.lr, weight_decay=opt.weight_decay)
+
 def xy2uv(x, y):
     pixs_per_meter = opt.height/opt.scale
     u = (opt.height-x*pixs_per_meter).astype(int)
@@ -228,7 +89,7 @@ def draw_traj():
     t = torch.arange(0, 0.99, 0.01).unsqueeze(1).to(device)
     t.requires_grad = True
     
-    batch['img'] = batch['img'].expand(len(t),1,200, 400)
+    batch['img'] = batch['img'].expand(len(t),1,opt.height, opt.width)
     batch['img'] = batch['img'].to(device)
     batch['t'] = batch['t'].to(device)
     batch['v_0'] = batch['v_0'].expand(len(t),1)
@@ -258,44 +119,12 @@ def draw_traj():
     y = opt.max_dist*result[:,1]
     u, v = xy2uv(x, y)
 
-
     for i in range(len(u)-1):
         draw.line((v[i], u[i], v[i+1], u[i+1]), 'red')
         draw.line((v[i]+1, u[i], v[i+1]+1, u[i+1]), 'red')
         draw.line((v[i]-1, u[i], v[i+1]-1, u[i+1]), 'red')
     
     img.save(('result/output/%s/' % opt.dataset_name)+str(time.time())+'.png')
-    
-    model.train()
-    
-    
-def test_model(total_step):
-    model.eval()
-    
-    batch = next(test_samples)
-    batch['img'] = batch['img'].to(device)
-    batch['t'] = batch['t'].to(device)
-    batch['v_0'] = batch['v_0'].to(device)
-    batch['xy'] = batch['xy'].to(device)
-    batch['vxy'] = batch['vxy'].to(device)
-    batch['img'].requires_grad = True
-    batch['t'].requires_grad = True
-
-    output = model(batch['img'], batch['t'])
-    #output = model(batch['img'], batch['t'], batch['v_0'])
-    vx = grad(output[:,0].sum(), batch['t'], create_graph=True)[0]
-    vy = grad(output[:,1].sum(), batch['t'], create_graph=True)[0]
-    output_vxy = (opt.max_dist/opt.max_t)*torch.cat([vx, vy], dim=1)
-    
-    loss_xy = criterion(output, batch['xy'])
-    loss_vxy = criterion(output_vxy, batch['vxy'])
-    #KLD = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
-    loss = loss_xy + opt.gamma*loss_vxy# + opt.gamma2*KLD
-
-    logger.add_scalar('test/loss_xy', opt.max_dist*loss_xy.item(), total_step)
-    logger.add_scalar('test/loss_vxy', loss_vxy.item(), total_step)
-    #logger.add_scalar('test/loss_kld', KLD.item(), total_step)
-    logger.add_scalar('test/loss', loss.item(), total_step)
     model.train()
 
 def eval_error(total_step):
@@ -355,22 +184,6 @@ def eval_error(total_step):
     if len(rel_vy) > 0:
         logger.add_scalar('eval/rel_vy', sum(rel_vy)/len(rel_vy), total_step)
     model.train()
-    
-
-model = Model().to(device)
-model.load_state_dict(torch.load('result/saved_models/tanh01/model_1000000.pth'))
-train_loader = DataLoader(CostMapDataset(), batch_size=opt.batch_size, shuffle=False, num_workers=opt.n_cpu)
-test_loader = DataLoader(CostMapDataset(data_index=[10]), batch_size=opt.batch_size, shuffle=False, num_workers=opt.n_cpu)
-test_samples = iter(test_loader)
-eval_loader = DataLoader(CostMapDataset(data_index=[10]), batch_size=1, shuffle=False, num_workers=1)
-eval_samples = iter(eval_loader)
-
-criterion = torch.nn.MSELoss().to(device)
-optimizer = torch.optim.Adam(model.parameters(), lr=opt.lr, weight_decay=opt.weight_decay)
-
-if not opt.test_mode:
-    logger = SummaryWriter(log_dir=log_path)
-    write_params()
 
 total_step = 0
 if opt.test_mode:
@@ -379,10 +192,10 @@ if opt.test_mode:
     
 print('Start to train ...')
 for i, batch in enumerate(train_loader):
-    for _ in range(100): draw_traj()
-    break
     total_step += 1
-    if opt.test_mode: batch = next(test_samples)
+    if opt.test_mode:
+        for _ in range(100): draw_traj()
+        break
 
     batch['img'] = batch['img'].to(device)
     batch['t'] = batch['t'].to(device)
@@ -404,26 +217,17 @@ for i, batch in enumerate(train_loader):
     #KLD = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
     loss = loss_xy + opt.gamma*loss_vxy# + opt.gamma2*KLD
     
-    if opt.test_mode:
-        gen = output.data.cpu().numpy()[0]
-        real = batch['xy'].data.cpu().numpy()[0]
-        abs_x.append(abs(gen[0]-real[0]))
-        abs_y.append(abs(gen[1]-real[1]))
-        if total_step == 500:
-            break
-    else:
-        loss.backward()
-        torch.nn.utils.clip_grad_value_(model.parameters(), clip_value=1)
-        optimizer.step()
+    loss.backward()
+    torch.nn.utils.clip_grad_value_(model.parameters(), clip_value=1)
+    optimizer.step()
+
+    logger.add_scalar('train/loss_xy', opt.max_dist*loss_xy.item(), total_step)
+    logger.add_scalar('train/loss_vxy', loss_vxy.item(), total_step)
+    #logger.add_scalar('train/loss_kld', KLD.item(), total_step)
+    logger.add_scalar('train/loss', loss.item(), total_step)
+
+    if total_step % opt.test_interval == 0:
+        eval_error(total_step)
     
-        logger.add_scalar('train/loss_xy', opt.max_dist*loss_xy.item(), total_step)
-        logger.add_scalar('train/loss_vxy', loss_vxy.item(), total_step)
-        #logger.add_scalar('train/loss_kld', KLD.item(), total_step)
-        logger.add_scalar('train/loss', loss.item(), total_step)
-    
-        if total_step % opt.test_interval == 0:
-            test_model(total_step)
-            eval_error(total_step)
-        
-        if total_step % opt.checkpoint_interval == 0:
-            torch.save(model.state_dict(), 'result/saved_models/%s/model_%d.pth'%(opt.dataset_name, total_step))
+    if total_step % opt.checkpoint_interval == 0:
+        torch.save(model.state_dict(), 'result/saved_models/%s/model_%d.pth'%(opt.dataset_name, total_step))
