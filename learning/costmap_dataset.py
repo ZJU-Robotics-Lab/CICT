@@ -17,7 +17,7 @@ def angle_normal(angle):
     return angle
 
 class CostMapDataset(Dataset):
-    def __init__(self, data_index, opt, evalmode=False):
+    def __init__(self, data_index, opt, dataset_path='/media/wang/DATASET/CARLA/town01/', evalmode=False):
         self.evalmode = evalmode
         self.data_index = data_index
         self.max_dist = opt.max_dist
@@ -28,7 +28,7 @@ class CostMapDataset(Dataset):
             ]
         
         self.transform = transforms.Compose(transforms_)
-        self.dataset_path = '/media/wang/DATASET/CARLA/'
+        self.dataset_path = dataset_path
         self.pose_dict = {}
         self.vel_dict = {}
         self.files_dict = {}
@@ -72,7 +72,7 @@ class CostMapDataset(Dataset):
         files = glob.glob(self.dataset_path+str(index)+'/ipm/*.png')
         file_names = []
         for file in files:
-            file_name = file.split('/')[7][:-4]
+            file_name = file.split('/')[8][:-4]
             file_names.append(file_name)
         file_names.sort()
         self.files_dict[index] = file_names
@@ -89,8 +89,8 @@ class CostMapDataset(Dataset):
     def __getitem__(self, index):
         data_index = random.sample(self.data_index, 1)[0]
         while True:
-            file_name = random.sample(self.files_dict[data_index][500:-1000], 1)[0]
-            image_path = '/media/wang/DATASET/CARLA/'+str(data_index)+'/ipm/'+file_name+'.png'
+            file_name = random.sample(self.files_dict[data_index][:-120], 1)[0]
+            image_path = self.dataset_path + str(data_index)+'/ipm/'+file_name+'.png'
             img = Image.open(image_path).convert('L')
             img = self.transform(img)
             
@@ -103,7 +103,7 @@ class CostMapDataset(Dataset):
             ts_list = []
             x_list = []
             y_list = []
-            for i in range(ts_index+1, len(self.files_dict[data_index])-500):
+            for i in range(ts_index+1, len(self.files_dict[data_index])-100):
                 ts = self.files_dict[data_index][i]
                 
                 _x_t = self.pose_dict[data_index][ts][0]

@@ -13,7 +13,7 @@ config = {
     'camera':{
         'img_length': 640,
         'img_width': 360,
-        'fov': 90,
+        'fov': 120,
         'fps': 30,
         },
     'lidar':{

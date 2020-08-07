@@ -25,7 +25,7 @@ parser.add_argument('-n', '--num', type=int, default=100000, help='total number'
 args = parser.parse_args()
 data_index = args.data
 
-save_path = '/media/wang/DATASET/CARLA/'+str(data_index)+'/'
+save_path = '/media/wang/DATASET/CARLA/town02/'+str(data_index)+'/'
 
 sensor_dict = {
     'camera':{
