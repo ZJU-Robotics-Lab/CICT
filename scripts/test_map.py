@@ -18,18 +18,19 @@ import PIL.Image as Image
 from PIL import ImageDraw
 
 MAX_SPEED = 20
-scale = 12.0
-x_offset = 2500
-y_offset = 3000
+scale = 12
+x_offset = 800
+y_offset = 1000
     
 def get_random_destination(spawn_points):
     return random.sample(spawn_points, 1)[0]
     
 def get_map(waypoint_tuple_list):
+    print(len(waypoint_tuple_list))
     origin_map = np.zeros((6000, 6000, 3), dtype="uint8")
     origin_map.fill(255)
     origin_map = Image.fromarray(origin_map)
-    """
+    
     for i in range(len(waypoint_tuple_list)):
         _x1 = waypoint_tuple_list[i][0].transform.location.x
         _y1 = waypoint_tuple_list[i][0].transform.location.y
@@ -41,8 +42,8 @@ def get_map(waypoint_tuple_list):
         y1 = scale*_y1+y_offset
         y2 = scale*_y2+y_offset
         draw = ImageDraw.Draw(origin_map)
-        draw.line((x1, y1, x2, y2), 'white', width=12)
-    """
+        draw.line((x1, y1, x2, y2), 'red', width=12)
+    
     return origin_map
 
 def draw_route(agent, destination, origin_map):
@@ -88,7 +89,7 @@ def main():
     client = carla.Client(config['host'], config['port'])
     client.set_timeout(config['timeout'])
     
-    world = client.get_world()
+    world = client.load_world('Town01')
     weather = carla.WeatherParameters(
         cloudiness=30.0,
         precipitation=30.0,
@@ -106,12 +107,13 @@ def main():
     spawn_points = world_map.get_spawn_points()
     waypoint_tuple_list = world_map.get_topology()
     origin_map = get_map(waypoint_tuple_list)
-
+    origin_map.resize((2000,2000)).show()
     agent = BasicAgent(vehicle, target_speed=MAX_SPEED)
     
     destination = get_random_destination(spawn_points)
     plan_map = replan(agent, destination, origin_map)
     
+    """
     while True:
         if close2dest(vehicle, destination):
             destination = get_random_destination(spawn_points)
@@ -129,7 +131,7 @@ def main():
         nav = get_nav(vehicle, plan_map)
         cv2.imshow('Nav', nav)
         cv2.waitKey(16)
-        
+    """
     cv2.destroyAllWindows()
     vehicle.destroy()
         

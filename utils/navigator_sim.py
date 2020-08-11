@@ -7,8 +7,8 @@ import PIL.Image as Image
 from PIL import ImageDraw
 
 scale = 12.0
-x_offset = 2500
-y_offset = 3000
+x_offset = 800#2500
+y_offset = 1000#3000
 
 def get_random_destination(spawn_points):
     return random.sample(spawn_points, 1)[0]
@@ -45,7 +45,7 @@ def draw_route(agent, destination, origin_map):
         route_trace_list.append(x)
         route_trace_list.append(y)
     draw = ImageDraw.Draw(origin_map)
-    draw.line(route_trace_list, 'red', width=20)
+    draw.line(route_trace_list, 'red', width=30)
     return origin_map
 
 def get_nav(vehicle, plan_map):
@@ -58,7 +58,22 @@ def get_nav(vehicle, plan_map):
     #draw.ellipse((_nav.size[0]//2-r, _nav.size[1]//2-r, _nav.size[0]//2+r, _nav.size[1]//2+r), fill='green', outline='green', width=10)
     
     im_rotate = _nav.rotate(vehicle.get_transform().rotation.yaw+90)
-    nav = im_rotate.crop((_nav.size[0]//2-100, _nav.size[1]//2-2*80, _nav.size[0]//2+100, _nav.size[1]//2))
+    nav = im_rotate.crop((_nav.size[0]//2-150, _nav.size[1]//2-2*120, _nav.size[0]//2+150, _nav.size[1]//2))
+    nav = cv2.cvtColor(np.asarray(nav), cv2.COLOR_BGR2RGB)
+    return nav
+
+def get_big_nav(vehicle, plan_map):
+    x = int(scale*vehicle.get_location().x + x_offset)
+    y = int(scale*vehicle.get_location().y + y_offset)
+    _nav = plan_map.crop((x-400,y-400, x+400, y+400))
+    
+    r = 20
+    draw = ImageDraw.Draw(_nav)
+    draw.ellipse((_nav.size[0]//2-r, _nav.size[1]//2-r, _nav.size[0]//2+r, _nav.size[1]//2+r), fill='green', outline='green', width=10)
+    
+    im_rotate = _nav.rotate(vehicle.get_transform().rotation.yaw+90)
+    #nav = im_rotate
+    nav = im_rotate.crop((0, 0, _nav.size[0], _nav.size[1]//2))
     nav = cv2.cvtColor(np.asarray(nav), cv2.COLOR_BGR2RGB)
     return nav
 

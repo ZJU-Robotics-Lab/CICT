@@ -125,12 +125,12 @@ class JoyStick:
             if hat==(1,0): # FX right
                 acc_time = self.ctrl.get_acc_time()
                 acc_time -= 1.5
-                self.ctrl.set_max_speed(acc_time)
+                self.ctrl.set_acc_time(acc_time)
                 print('Set acc_time:', acc_time)
             if hat==(-1,0): # FX left
                 acc_time = self.ctrl.get_acc_time()
                 acc_time += 1.5
-                self.ctrl.set_max_speed(acc_time)
+                self.ctrl.set_acc_time(acc_time)
                 print('Set acc_time:', acc_time)
             if hat==(0,1): # FX up
                 max_speed = self.ctrl.get_max_speed()

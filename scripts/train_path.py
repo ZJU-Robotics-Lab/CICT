@@ -30,7 +30,7 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--test_mode', type=bool, default=False, help='test model switch')
-parser.add_argument('--dataset_name', type=str, default="cos_town01_02", help='name of the dataset')
+parser.add_argument('--dataset_name', type=str, default="human-data-01", help='name of the dataset')
 parser.add_argument('--width', type=int, default=400, help='image width')
 parser.add_argument('--height', type=int, default=200, help='image height')
 parser.add_argument('--scale', type=float, default=25., help='longitudinal length')
@@ -47,7 +47,7 @@ parser.add_argument('--max_t', type=float, default=5., help='max time')
 opt = parser.parse_args()
 if opt.test_mode: opt.batch_size = 1
 
-description = 'new dataset town01, second last cos, no last activition, cos rate 1.0'
+description = 'cos model, add v0, final nodes 256, human-data input'
 log_path = 'result/log/'+opt.dataset_name+'/'
 os.makedirs('result/saved_models/%s' % opt.dataset_name, exist_ok=True)
 os.makedirs('result/output/%s' % opt.dataset_name, exist_ok=True)
@@ -57,11 +57,10 @@ if not opt.test_mode:
     write_params(log_path, parser, description)
     
 model = Model_COS().to(device)
-#model.load_state_dict(torch.load('result/saved_models/cos01/model_158000.pth'))
-train_loader = DataLoader(CostMapDataset(data_index=[1,2,3,4], opt=opt), batch_size=opt.batch_size, shuffle=False, num_workers=opt.n_cpu)
+#model.load_state_dict(torch.load('result/saved_models/human-data-01/model_800000.pth'))
+train_loader = DataLoader(CostMapDataset(data_index=[1,2,3,4,6,7,8,9,10,11,12,13,14,15], opt=opt, dataset_path='/media/wang/DATASET/CARLA_HUMAN/town01/'), batch_size=opt.batch_size, shuffle=False, num_workers=opt.n_cpu)
 
-#eval_loader = DataLoader(CostMapDataset(data_index=[1], opt=opt, dataset_path='/media/wang/DATASET/CARLA/town02/', evalmode=True), batch_size=1, shuffle=False, num_workers=1)
-eval_loader = DataLoader(CostMapDataset(data_index=[5], opt=opt, dataset_path='/media/wang/DATASET/CARLA/town01/', evalmode=True), batch_size=1, shuffle=False, num_workers=1)
+eval_loader = DataLoader(CostMapDataset(data_index=[16], opt=opt, dataset_path='/media/wang/DATASET/CARLA_HUMAN/town01/', evalmode=True), batch_size=1, shuffle=False, num_workers=1)
 eval_samples = iter(eval_loader)
 
 criterion = torch.nn.MSELoss().to(device)
@@ -97,8 +96,8 @@ def draw_traj():
     batch['img'].requires_grad = True
     batch['t'].requires_grad = True
     
-    #output = model(batch['img'], t, batch['v_0'])
-    output = model(batch['img'], t)
+    output = model(batch['img'], t, batch['v_0'])
+    #output = model(batch['img'], t)
     
     img = Image.fromarray(img).convert("RGB")
     draw =ImageDraw.Draw(img)
@@ -145,8 +144,8 @@ def eval_error(total_step):
         batch['img'].requires_grad = True
         batch['t'].requires_grad = True
     
-        output = model(batch['img'], batch['t'])
-        #output = model(batch['img'], batch['t'], batch['v_0'])
+        #output = model(batch['img'], batch['t'])
+        output = model(batch['img'], batch['t'], batch['v_0'])
         vx = (opt.max_dist/opt.max_t)*grad(output[:,0].sum(), batch['t'], create_graph=True)[0]
         vy = (opt.max_dist/opt.max_t)*grad(output[:,1].sum(), batch['t'], create_graph=True)[0]
         
@@ -203,8 +202,8 @@ for i, batch in enumerate(train_loader):
     batch['img'].requires_grad = True
     batch['t'].requires_grad = True
 
-    output = model(batch['img'], batch['t'])
-    #output = model(batch['img'], batch['t'], batch['v_0'])
+    #output = model(batch['img'], batch['t'])
+    output = model(batch['img'], batch['t'], batch['v_0'])
     vx = grad(output[:,0].sum(), batch['t'], create_graph=True)[0]
     vy = grad(output[:,1].sum(), batch['t'], create_graph=True)[0]
     output_vxy = (opt.max_dist/opt.max_t)*torch.cat([vx, vy], dim=1)

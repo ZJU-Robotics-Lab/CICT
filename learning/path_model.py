@@ -133,17 +133,17 @@ class MLP_COS(nn.Module):
     def __init__(self, rate=1.0):
         super(MLP_COS, self).__init__()
         self.rate = rate
-        self.linear1 = nn.Linear(256+1, 512)
+        self.linear1 = nn.Linear(256+2, 512)
         self.linear2 = nn.Linear(512, 512)
         self.linear3 = nn.Linear(512, 512)
-        self.linear4 = nn.Linear(512, 1024)
-        self.linear5 = nn.Linear(1024, 2)
+        self.linear4 = nn.Linear(512, 256)
+        self.linear5 = nn.Linear(256, 2)
         
         self.apply(weights_init)
         
-    def forward(self, x, t):
+    def forward(self, x, t, v0):
         x = torch.cat([x, t], dim=1)
-        #x = torch.cat([x, v0], dim=1)
+        x = torch.cat([x, v0], dim=1)
         x = self.linear1(x)
         #x = F.leaky_relu(x)
         x = torch.tanh(x)
@@ -170,9 +170,9 @@ class Model_COS(nn.Module):
         self.cnn = CNN()
         self.mlp = MLP_COS(rate)
     
-    def forward(self, x, t):
+    def forward(self, x, t, v0):
         x = self.cnn(x)
-        x = self.mlp(x, t)
+        x = self.mlp(x, t, v0)
         return x
     
 class Model(nn.Module):

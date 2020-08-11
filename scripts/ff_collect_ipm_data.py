@@ -24,12 +24,12 @@ longitudinal_length = 25.0 # [m]
 ksize = 21
 
 parser = argparse.ArgumentParser(description='Params')
-parser.add_argument('-d', '--data', type=int, default=8, help='data index')
+parser.add_argument('-d', '--data', type=int, default=1, help='data index')
 parser.add_argument('-n', '--num', type=int, default=100000, help='total number')
 args = parser.parse_args()
 data_index = args.data
 
-save_path = '/media/wang/DATASET/CARLA/town02/'+str(data_index)+'/'
+save_path = '/media/wang/DATASET/CARLA_HUMAN/town01/'+str(data_index)+'/'
 
 def mkdir(path):
     if not os.path.exists(save_path+path):
@@ -142,7 +142,7 @@ def main():
     start = 0
     end = len(time_stamp_list)
     
-    for i in tqdm(range(start, end, 3)):
+    for i in tqdm(range(start, end)):
         try:
             time_stamp = time_stamp_list[i]
             pm_image = read_image(time_stamp)

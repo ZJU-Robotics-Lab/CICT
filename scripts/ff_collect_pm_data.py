@@ -10,10 +10,11 @@ from simulator import config
 import carla
 import argparse
 import time
+from tqdm import tqdm
 
-MAX_SPEED = 20
-TRAJ_LENGTH = 25
-vehicle_width = 2.2
+MAX_SPEED = 30
+TRAJ_LENGTH = 20#25
+vehicle_width = 2.0
 longitudinal_sample_number_near = 8
 longitudinal_sample_number_far = 0.5
 lateral_sample_number = 20
@@ -25,15 +26,15 @@ parser.add_argument('-n', '--num', type=int, default=100000, help='total number'
 args = parser.parse_args()
 data_index = args.data
 
-save_path = '/media/wang/DATASET/CARLA/town02/'+str(data_index)+'/'
+save_path = '/media/wang/DATASET/CARLA_HUMAN/town01/'+str(data_index)+'/'
 
 sensor_dict = {
     'camera':{
-        'transform':carla.Transform(carla.Location(x=1.5, y=0.0, z=2.0)),
+        'transform':carla.Transform(carla.Location(x=0.5, y=0.0, z=2.5)),
         # 'callback':image_callback,
     },
     'lidar':{
-        'transform':carla.Transform(carla.Location(x=1.5, y=0.0, z=2.0)),
+        'transform':carla.Transform(carla.Location(x=0.5, y=0.0, z=2.5)),
         # 'callback':lidar_callback,
     },
 }
@@ -99,7 +100,7 @@ def find_traj_with_fix_length(start_index, time_stamp_list, time_stamp_pose_dict
     length = 0.0
     for i in range(start_index, len(time_stamp_list)-1):
         length += distance(time_stamp_pose_dict[time_stamp_list[i]], time_stamp_pose_dict[time_stamp_list[i+1]])
-        # print('here: '+str((i, length)))
+        #print('here: '+str((i, length)))
         if length >= TRAJ_LENGTH:
             return i
     return -1
@@ -128,11 +129,12 @@ def main():
     sensor_master = CarlaSensorMaster(sensor, sensor_dict['camera']['transform'], binded=True)
     collect_perspective = CollectPerspectiveImage(param, sensor_master)
 
-    for index, time_stamp in enumerate(time_stamp_list):
+    for index in tqdm(range(len(time_stamp_list))):
+        time_stamp = time_stamp_list[index]
         end_index = find_traj_with_fix_length(index, time_stamp_list, time_stamp_pose_dict)
         if end_index < 0:
-            print('current index: ' + str(index))
-            continue
+            print('no enough traj: ', str(index), index/len(time_stamp_list))
+            break
 
         vehicle_transform = time_stamp_pose_dict[time_stamp]  # in world coordinate
         traj_pose_list = []

@@ -88,14 +88,14 @@ def lidar_callback(data):
     mask = np.where(point_cloud[2] > -1.95)[0]
     point_cloud = point_cloud[:, mask]
     global_pcd = point_cloud
-
+    #world.set_weather(carla.WeatherParameters.ClearNoon)
 def main():
     global global_nav, global_control, global_pos, global_vel
     client = carla.Client(config['host'], config['port'])
     client.set_timeout(config['timeout'])
     
     #world = client.get_world()
-    world = client.load_world('Town02')
+    world = client.load_world('Town01')
 
     weather = carla.WeatherParameters(
         cloudiness=random.randint(0,10),
