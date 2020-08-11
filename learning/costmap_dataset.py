@@ -72,7 +72,7 @@ class CostMapDataset(Dataset):
         files = glob.glob(self.dataset_path+str(index)+'/ipm/*.png')
         file_names = []
         for file in files:
-            file_name = file.split('/')[8][:-4]
+            file_name = file.split('/')[-1][:-4]
             file_names.append(file_name)
         file_names.sort()
         self.files_dict[index] = file_names
@@ -152,6 +152,90 @@ class CostMapDataset(Dataset):
             return {'img': img, 't': t, 'xy':xy, 'vxy':vxy, 'v_0':v_0, 'yaw_t': yaw_t, 'x_list':x_list, 'y_list':y_list}
         else:
             return {'img': img, 't': t, 'xy':xy, 'vxy':vxy, 'v_0':v_0}
+
+    def __len__(self):
+        return 100000000000
+    
+    
+class CARLADataset(Dataset):
+    def __init__(self, data_index, dataset_path='/media/wang/DATASET/CARLA_HUMAN/town01/', eval_mode=False):
+        self.data_index = data_index
+        self.eval_mode = eval_mode
+        img_height = 128
+        img_width = 256
+        
+        label_transforms = [
+            transforms.Resize((img_height, img_width), Image.BICUBIC),
+            transforms.ToTensor(),
+            transforms.Normalize((0.5), (0.5))
+        ]
+        
+        img_transforms = [
+            transforms.Resize((img_height, img_width), Image.BICUBIC),
+            transforms.ColorJitter(brightness=0.2,contrast=0.2,hue=0.2),
+            transforms.ToTensor(),
+            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
+        ]
+        
+        nav_transforms = [
+            transforms.Resize((img_height, img_width), Image.BICUBIC),
+            transforms.ToTensor(),
+            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
+        ]
+        
+        self.label_transforms = transforms.Compose(label_transforms)
+        self.img_transforms = transforms.Compose(img_transforms)
+        self.nav_transforms = transforms.Compose(nav_transforms)
+        
+        self.dataset_path = dataset_path
+        self.files_dict = {}
+        self.total_len = 0
+        
+        for index in self.data_index:
+            self.read_img(index)
+    
+    def read_img(self, index):
+        files = glob.glob(self.dataset_path+str(index)+'/pm/*.png')
+        file_names = []
+        for file in files:
+            file_name = file.split('/')[-1][:-4]
+            file_names.append(file_name)
+        file_names.sort()
+        self.files_dict[index] = file_names
+        
+    def __getitem__(self, index):
+        mirror = True if random.random() > 0.5 else False
+        data_index = random.sample(self.data_index, 1)[0]
+        while True:
+            try:
+                file_name = random.sample(self.files_dict[data_index], 1)[0]
+                # img
+                img_path = self.dataset_path + str(data_index)+'/img/'+file_name+'.png'
+                img = Image.open(img_path).convert("RGB")
+                # nav
+                nav_path = self.dataset_path + str(data_index)+'/nav/'+file_name+'.png'
+                nav = Image.open(nav_path).convert("RGB")
+                # label
+                label_path = self.dataset_path + str(data_index)+'/pm/'+file_name+'.png'
+                label = Image.open(label_path).convert('L')
+                
+                # mirror the inputs
+                if mirror:
+                    img = Image.fromarray(np.array(img)[:, ::-1, :], 'RGB')
+                    nav = Image.fromarray(np.array(nav)[:, ::-1, :], 'RGB')
+                    label = Image.fromarray(np.array(label)[:, ::-1], 'L')
+                
+                img = self.img_transforms(img)
+                nav = self.nav_transforms(nav)
+                label = self.label_transforms(label)
+                break
+            except:
+                pass
+        if not self.eval_mode:
+            input_img = torch.cat((img, nav), 0)
+            return {'A': input_img, 'B': label}
+        else:
+            return {'A1': img, 'A2': nav, 'B': label, 'file_name':file_name}
 
     def __len__(self):
         return 100000000000

@@ -7,7 +7,7 @@ from torch.utils.data import Dataset
 from PIL import Image
 import torchvision.transforms as transforms
 import torch
-
+    
 class Yq21Dataset(Dataset):
     def __init__(self, transforms_=None, transforms2_=None,data_index=[1,2,3,4,5]):
         self.transform = transforms.Compose(transforms_)
