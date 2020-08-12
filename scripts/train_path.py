@@ -81,7 +81,7 @@ def xy2uv(x, y):
 def draw_traj():
     model.eval()
     batch = next(eval_samples)
-    img = batch['img'].clone().data.numpy().squeeze()*255+127
+    img = batch['img'].clone().data.numpy().squeeze()*127+128
     
     t = torch.arange(0, 0.99, 0.01).unsqueeze(1).to(device)
     t.requires_grad = True
