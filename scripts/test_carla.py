@@ -27,7 +27,7 @@ import copy
 import random
 import argparse
 import numpy as np
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFont
 from datetime import datetime
 
 import torch
@@ -151,21 +151,21 @@ def draw_traj(cost_map):
     u, v = xy2uv(x, y)
 
     for i in range(len(u)-1):
-        draw.line((v[i], u[i], v[i+1], u[i+1]), 'red')
-        draw.line((v[i]+1, u[i], v[i+1]+1, u[i+1]), 'red')
-        draw.line((v[i]-1, u[i], v[i+1]-1, u[i+1]), 'red')
+        draw.line((v[i], u[i], v[i+1], u[i+1]), 'blue')
+        draw.line((v[i]+1, u[i], v[i+1]+1, u[i+1]), 'blue')
+        draw.line((v[i]-1, u[i], v[i+1]-1, u[i+1]), 'blue')
         
     return cv2.cvtColor(np.asarray(cost_map),cv2.COLOR_RGB2BGR)
 
 def get_traj(cost_map, t, show=False):
     global global_vel
     img = Image.fromarray(cv2.cvtColor(cost_map,cv2.COLOR_BGR2RGB)).convert('L')
-    img = cost_map_trans(img)
+    trans_img = cost_map_trans(img)
     
     t = torch.FloatTensor([t/args.max_t]).unsqueeze(1).to(device)
     t.requires_grad = True
     
-    img = img.expand(len(t),1,args.height, args.width)
+    img = trans_img.expand(len(t),1,args.height, args.width)
     img = img.to(device)
     img.requires_grad = True
 
@@ -176,15 +176,13 @@ def get_traj(cost_map, t, show=False):
     vx = (args.max_dist/args.max_t)*grad(output[:,0].sum(), t, create_graph=True)[0].data.cpu().numpy()[0][0]
     vy = (args.max_dist/args.max_t)*grad(output[:,1].sum(), t, create_graph=True)[0].data.cpu().numpy()[0][0]
     
-    ######################
     x = output.data.cpu().numpy()[0][0]*args.max_dist
     y = output.data.cpu().numpy()[0][1]*args.max_dist
     trajectory = {'x':x, 'y':y, 'vx':vx, 'vy':vy}
     
-    ####################
     if show:
         cost_map = Image.fromarray(cost_map).convert("RGB")
-    
+        
         result = output.data.cpu().numpy()
         x = args.max_dist*result[:,0]
         y = args.max_dist*result[:,1]
@@ -193,8 +191,35 @@ def get_traj(cost_map, t, show=False):
         v = v[0]
         r = 10
         draw = ImageDraw.Draw(cost_map)
-        draw.ellipse((max(0,v-r), max(0,u-r), v+r, u+r), fill='red', outline='red', width=10)
+        ################
+        t = torch.arange(0, 0.7, 0.01).unsqueeze(1).to(device)
+        t.requires_grad = True
+
+        img = trans_img.expand(len(t),1,args.height, args.width)
+        img = img.to(device)
+        img.requires_grad = True
+        v_0 = torch.FloatTensor([global_vel]).expand(len(t),1)
+        v_0 = v_0.to(device)
+        output = model(img, t, v_0)
+
+        result = output.data.cpu().numpy()
+        xs = args.max_dist*result[:,0]
+        ys = args.max_dist*result[:,1]
+        us, vs = xy2uv(xs, ys)
     
+        for i in range(len(us)-1):
+            draw.line((vs[i], us[i], vs[i+1], us[i+1]), 'red')
+            draw.line((vs[i]+1, us[i], vs[i+1]+1, us[i+1]), 'red')
+            draw.line((vs[i]-1, us[i], vs[i+1]-1, us[i+1]), 'red')
+            
+        draw.ellipse((max(0,v-r), max(0,u-r), v+r, u+r), fill='blue', outline='blue', width=10)
+        fnt = ImageFont.truetype('Pillow/Tests/fonts/FreeMono.ttf', 15)
+        v_offset = 12
+        u_offset = -7
+        draw.text((v+v_offset,u+u_offset), 'waypoint', font=fnt, fill ='blue')
+        draw.text((v+v_offset+1,u+u_offset),'waypoint',font=fnt,fill='blue')
+        draw.text((v+v_offset-1,u+u_offset),'waypoint',font=fnt,fill='blue')
+        
     return cv2.cvtColor(np.asarray(cost_map),cv2.COLOR_RGB2BGR), trajectory
 
 def mkdir(path):
@@ -210,9 +235,7 @@ def lidar_callback(data):
     global global_pcd
     lidar_data = np.frombuffer(data.raw_data, dtype=np.float32).reshape([-1, 3])
     point_cloud = np.stack([-lidar_data[:,1], -lidar_data[:,0], -lidar_data[:,2]])
-    mask = np.where((point_cloud[0] > 1.0)|(point_cloud[0] < -4.0)|(point_cloud[1] > 1.2)|(point_cloud[1] < -1.2))[0]
-    point_cloud = point_cloud[:, mask]
-    mask = np.where(point_cloud[2] > -1.95)[0]
+    mask = np.where(point_cloud[2] > -2.3)[0]
     point_cloud = point_cloud[:, mask]
     global_pcd = point_cloud
 
@@ -234,23 +257,47 @@ def get_control(trajectory):
     control = carla.VehicleControl()
     control.manual_gear_shift = True
     control.gear = 1
-    control.throttle = 0.7
 
     x = trajectory['x']
     y = trajectory['y']
     vx = trajectory['vx']
     vy = trajectory['vy']
+    v_target = np.sqrt(vx**2+vy**2)
     yaw = np.arctan2(vy, vx)
     theta = np.arctan2(y, x)
     dist = np.sqrt(x**2+y**2)
     e = dist*np.sin(yaw-theta)
     K = 0.01
     Ks = 10.0
+    Kv = 2.0
     tan_input = K*e/(Ks + global_vel)
     yaw_target = yaw + np.tan(tan_input)
+    control.throttle = np.clip(0.7 + Kv*(v_target-global_vel), 0., 1.)
     control.steer = np.clip(0.25*yaw_target, -1., 1.)
     return control
 
+def add_alpha_channel(img): 
+    b_channel, g_channel, r_channel = cv2.split(img)
+    alpha_channel = np.ones(b_channel.shape, dtype=b_channel.dtype) * 255
+    alpha_channel[:, :int(b_channel.shape[0] / 2)] = 100
+    img_BGRA = cv2.merge((b_channel, g_channel, r_channel, alpha_channel))
+    return img_BGRA
+
+cnt = 0
+def visualize(img, costmap, nav):
+    global global_vel, cnt
+    text = "speed: "+str(round(3.6*global_vel, 1))+' km/h'
+    cv2.putText(img, text, (20, 30), cv2.FONT_HERSHEY_PLAIN, 2.0, (255, 255, 255), 2)
+    
+    nav = cv2.resize(nav, (240, 200), interpolation=cv2.INTER_CUBIC)
+    down_img = np.hstack([costmap, nav])
+    down_img = add_alpha_channel(down_img)
+    show_img = np.vstack([img, down_img])
+    cv2.imshow('Result', show_img)
+    #cv2.imwrite('result/images/output/'+str(cnt)+'.png', show_img)
+    cv2.waitKey(10)
+    cnt += 1
+    
 def main():
     global global_nav, global_vel
     client = carla.Client(config['host'], config['port'])
@@ -304,10 +351,6 @@ def main():
             destination = get_random_destination(spawn_points)
             plan_map = replan(agent, destination, copy.deepcopy(origin_map)) 
             
-        #control = agent.run_step()
-        #control.manual_gear_shift = False
-        #vehicle.apply_control(control)
-        #global_pos = vehicle.get_transform()
         v = vehicle.get_velocity()
         global_vel = np.sqrt(v.x**2+v.y**2+v.z**2)
         
@@ -325,9 +368,8 @@ def main():
         plan_cost_map, trajectory = get_traj(cost_map, 0.7, show=True)
         control = get_control(trajectory)
         vehicle.apply_control(control)
-        cv2.imshow('Result', img)
-        cv2.imshow('Cost_map', plan_cost_map)
-        cv2.waitKey(10)
+        
+        visualize(img, plan_cost_map, global_nav)
 
     cv2.destroyAllWindows()
     sm.close_all()

@@ -177,9 +177,7 @@ def lidar_callback(data):
     global global_pcd
     lidar_data = np.frombuffer(data.raw_data, dtype=np.float32).reshape([-1, 3])
     point_cloud = np.stack([-lidar_data[:,1], -lidar_data[:,0], -lidar_data[:,2]])
-    mask = np.where((point_cloud[0] > 1.0)|(point_cloud[0] < -4.0)|(point_cloud[1] > 1.2)|(point_cloud[1] < -1.2))[0]
-    point_cloud = point_cloud[:, mask]
-    mask = np.where(point_cloud[2] > -1.95)[0]
+    mask = np.where(point_cloud[2] > -2.3)[0]
     point_cloud = point_cloud[:, mask]
     global_pcd = point_cloud
     
@@ -194,7 +192,7 @@ if __name__ == '__main__':
     from evdev import ecodes, InputDevice
     device = evdev.list_devices()[0]
     evtdev = InputDevice(device)
-    val = 27500 #[0,65535]
+    val = 25000 #[0,65535]
     evtdev.write(ecodes.EV_FF, ecodes.FF_AUTOCENTER, val)
     
     argparser = argparse.ArgumentParser(
@@ -220,7 +218,7 @@ if __name__ == '__main__':
         metavar='WIDTHxHEIGHT',
         default='1920x1080',
         help='window resolution (default: 1920x1080)')
-    argparser.add_argument('-d', '--data', type=int, default=18, help='data index')
+    argparser.add_argument('-d', '--data', type=int, default=31, help='data index')
     args = argparser.parse_args()
 
     args.width, args.height = [int(x) for x in args.res.split('x')]
@@ -232,7 +230,6 @@ if __name__ == '__main__':
         os.makedirs(save_path+path, exist_ok=True)
     
     mkdir('')
-    mkdir('img/')  
     mkdir('img/')
     mkdir('pcd/')
     mkdir('nav/')
@@ -295,7 +292,7 @@ if __name__ == '__main__':
             cv2.imshow('Vision', big_nav)
             cv2.waitKey(10)
             index = str(time.time())
-            #save_data(index)
+            save_data(index)
             
             world.tick(clock)
             world.render(display)

@@ -30,7 +30,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--eval', type=bool, default=False, help='if eval')
 parser.add_argument('--epoch', type=int, default=0, help='epoch to start training from')
 parser.add_argument('--n_epochs', type=int, default=100, help='number of epochs of training')
-parser.add_argument('--dataset_name', type=str, default="cgan-human-data-01", help='name of the dataset')
+parser.add_argument('--dataset_name', type=str, default="cgan-human-data-02", help='name of the dataset')
 parser.add_argument('--batch_size', type=int, default=32, help='size of the batches')
 parser.add_argument('--lr', type=float, default=3e-4, help='adam: learning rate')
 parser.add_argument('--b1', type=float, default=0.5, help='adam: decay of first order momentum of gradient')
@@ -45,7 +45,7 @@ parser.add_argument('--checkpoint_interval', type=int, default=1000, help='inter
 opt = parser.parse_args()
 #print(opt)
 
-description = 'cgan train'
+description = 'cgan train, dynamic obstacles'
 log_path = 'result/log/'+opt.dataset_name+'/'
 os.makedirs('result/images/%s' % opt.dataset_name, exist_ok=True)
 os.makedirs('result/saved_models/%s' % opt.dataset_name, exist_ok=True)
@@ -70,8 +70,8 @@ discriminator = Discriminator()
 
 generator = generator.to(device)
 discriminator = discriminator.to(device)
-generator.load_state_dict(torch.load('../ckpt/g.pth'))
-discriminator.load_state_dict(torch.load('../ckpt/d.pth'))
+generator.load_state_dict(torch.load('../ckpt/sim/g.pth'))
+discriminator.load_state_dict(torch.load('../ckpt/sim/d.pth'))
 
 criterion_GAN.to(device)
 criterion_pixelwise.to(device)
@@ -111,9 +111,9 @@ def eval_dataset():
     
     generator.train()
 
-train_loader = DataLoader(CARLADataset(data_index=[1,2,3,4,6,7,8,9,10,11,12,13,14,15]),
+train_loader = DataLoader(CARLADataset(data_index=[16,17,18,19,20,21,22,23,24,25,26,27,28,29,31]),
                             batch_size=opt.batch_size, shuffle=False, num_workers=opt.n_cpu)
-test_val_dataloader = DataLoader(CARLADataset(data_index=[16], eval_mode=True),
+test_val_dataloader = DataLoader(CARLADataset(data_index=[30], eval_mode=True),
                             batch_size=opt.n_cpu, shuffle=False, num_workers=opt.n_cpu)
 test_samples = iter(test_val_dataloader)
 
@@ -140,7 +140,7 @@ def sample_images(steps):
     
         save_image(img_sample, 'result/images/%s/%s_img.png' % (opt.dataset_name, steps), nrow=4, normalize=True)
         save_image(pre_sample, 'result/images/%s/%s_pre.png' % (opt.dataset_name, steps), nrow=4, normalize=True)
-        save_image(test_fake_b.data, 'result/images/%s/%s_fake.png' % (opt.dataset_name, steps), nrow=4, normalize=True)
+        #save_image(test_fake_b.data, 'result/images/%s/%s_fake.png' % (opt.dataset_name, steps), nrow=4, normalize=True)
         #logger.add_image('img/origin', img_sample[0])
         #logger.add_image('img/prediction', pre_sample[0]*128)
     
@@ -148,6 +148,7 @@ def sample_images(steps):
 
 #eval_dataset()
 
+print('Start to train ...')
 total_step = 0
 for epoch in range(opt.epoch, opt.n_epochs):
     for i, batch in enumerate(train_loader):

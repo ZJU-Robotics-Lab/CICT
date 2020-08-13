@@ -85,4 +85,4 @@ def replan(agent, destination, origin_map):
     return plan_map
     
 def close2dest(vehicle, destination):
-    return destination.location.distance(vehicle.get_location()) < 20
+    return destination.location.distance(vehicle.get_location()) < 30

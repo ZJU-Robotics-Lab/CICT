@@ -179,6 +179,7 @@ class CARLADataset(Dataset):
         
         nav_transforms = [
             transforms.Resize((img_height, img_width), Image.BICUBIC),
+            transforms.RandomRotation(15, resample=Image.BICUBIC, expand=False),
             transforms.ToTensor(),
             transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
         ]
@@ -204,7 +205,7 @@ class CARLADataset(Dataset):
         self.files_dict[index] = file_names
         
     def __getitem__(self, index):
-        mirror = True if random.random() > 0.5 else False
+        mirror = False#True if random.random() > 0.5 else False
         data_index = random.sample(self.data_index, 1)[0]
         while True:
             try:
