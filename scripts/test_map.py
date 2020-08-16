@@ -19,8 +19,8 @@ from PIL import ImageDraw
 
 MAX_SPEED = 20
 scale = 12
-x_offset = 800
-y_offset = 1000
+x_offset = 1500
+y_offset = 0
     
 def get_random_destination(spawn_points):
     return random.sample(spawn_points, 1)[0]
@@ -89,7 +89,7 @@ def main():
     client = carla.Client(config['host'], config['port'])
     client.set_timeout(config['timeout'])
     
-    world = client.load_world('Town01')
+    world = client.load_world('Town02')
     weather = carla.WeatherParameters(
         cloudiness=30.0,
         precipitation=30.0,

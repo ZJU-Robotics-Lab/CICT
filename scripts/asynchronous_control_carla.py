@@ -50,7 +50,7 @@ global_transform = None
 max_steer_angle = 0.
 draw_cost_map = None
 
-MAX_SPEED = 20
+MAX_SPEED = 30
 img_height = 128
 img_width = 256
 longitudinal_length = 25.0 # [m]
@@ -62,9 +62,9 @@ device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 generator = GeneratorUNet()
 generator = generator.to(device)
-generator.load_state_dict(torch.load('../ckpt/sim/g.pth'))
+generator.load_state_dict(torch.load('../ckpt/sim-obs/g.pth'))
 model = Model_COS().to(device)
-model.load_state_dict(torch.load('../ckpt/sim/model.pth'))
+model.load_state_dict(torch.load('../ckpt/sim-obs/model.pth'))
 generator.eval()
 model.eval()
 
@@ -215,7 +215,7 @@ def visualize(img, costmap, nav):
     down_img = add_alpha_channel(down_img)
     show_img = np.vstack([img, down_img])
     cv2.imshow('Result', show_img)
-    cv2.imwrite('result/images/output5/'+str(cnt)+'.png', show_img)
+    #cv2.imwrite('result/images/nt-nv-dw/'+str(cnt)+'.png', show_img)
     cv2.waitKey(10)
     cnt += 1
 
@@ -282,7 +282,7 @@ def make_plan():
         cost_map = get_cost_map(ipm_image, global_pcd)
         # 3. get trajectory
         trajectory = get_traj(cost_map, plan_time)
-        time.sleep(0.5)
+        #time.sleep(0.5)
         global_trajectory = trajectory
         global_cost_map = cost_map
         if not start_control:
@@ -361,7 +361,9 @@ def main():
     blueprint = world.get_blueprint_library()
     world_map = world.get_map()
     
-    vehicle = add_vehicle(world, blueprint, vehicle_type='vehicle.audi.a2')
+    #vehicle = add_vehicle(world, blueprint, vehicle_type='vehicle.audi.a2')
+    vehicle = add_vehicle(world, blueprint, vehicle_type='vehicle.yamaha.yzf')
+    #vehicle = add_vehicle(world, blueprint, vehicle_type='vehicle.*.*')
     global_vehicle = vehicle
     # Enables or disables the simulation of physics on this actor.
     vehicle.set_simulate_physics(True)
@@ -410,6 +412,8 @@ def main():
     # start to control
     print('Start to control')
     avg_dt = 1.0
+    distance = 0.
+    last_location = vehicle.get_location()
     while True:
         # change destination
         if close2dest(vehicle, destination):
@@ -428,13 +432,17 @@ def main():
         control_time = time.time()
         dt = control_time - global_trajectory['time']
         avg_dt = 0.99*avg_dt + 0.01*dt
-        print(round(avg_dt, 3))
+        #print(round(avg_dt, 3))
         index = int((dt/args.max_t)//args.dt)
         if index > 0.9/args.dt:
             continue
         
-        transform = vehicle.get_transform()
+        location = vehicle.get_location()
+        distance += location.distance(last_location)
+        last_location = location
+        #print(round(distance, 1))
         
+        transform = vehicle.get_transform()
         dx, dy, dyaw = get_transform(transform, global_transform)
         dyaw = -dyaw
         

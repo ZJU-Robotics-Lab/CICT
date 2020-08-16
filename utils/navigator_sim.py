@@ -7,8 +7,8 @@ import PIL.Image as Image
 from PIL import ImageDraw
 
 scale = 12.0
-x_offset = 800#2500
-y_offset = 1000#3000
+x_offset = 800#1500#2500
+y_offset = 1000#0#3000
 
 def get_random_destination(spawn_points):
     return random.sample(spawn_points, 1)[0]
