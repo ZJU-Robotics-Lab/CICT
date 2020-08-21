@@ -13,8 +13,8 @@ from agents.navigation.basic_agent import BasicAgent
 from simulator import config, set_weather, add_vehicle
 from simulator.sensor_manager import SensorManager
 from utils.navigator_sim import get_random_destination, get_map, get_nav, replan, close2dest
-from learning.models import GeneratorUNet
-from learning.path_model import Model_COS
+#from learning.models import GeneratorUNet
+from learning.path_model import Model_COS_Img
 
 from ff_collect_pm_data import sensor_dict
 from ff.collect_ipm import InversePerspectiveMapping
@@ -60,12 +60,11 @@ torch.manual_seed(999)
 torch.cuda.manual_seed(999)
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
-generator = GeneratorUNet()
-generator = generator.to(device)
-generator.load_state_dict(torch.load('../ckpt/sim-obs/g.pth'))
-model = Model_COS().to(device)
-model.load_state_dict(torch.load('../ckpt/sim-obs/model_1222000.pth'))
-generator.eval()
+#generator = GeneratorUNet()
+#generator = generator.to(device)
+#generator.load_state_dict(torch.load('../ckpt/sim-obs/g.pth'))
+model = Model_COS_Img().to(device)
+model.load_state_dict(torch.load('result/saved_models/img-input-01/model_42000.pth'))
 model.eval()
 
 parser = argparse.ArgumentParser(description='Params')
@@ -83,7 +82,7 @@ data_index = args.data
 save_path = '/media/wang/DATASET/CARLA/town01/'+str(data_index)+'/'
 
 img_transforms = [
-    transforms.Resize((img_height, img_width)),
+    transforms.Resize((200, 400)),
     transforms.ToTensor(),
     transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
 ]
@@ -163,17 +162,6 @@ def lidar_callback(data):
     point_cloud = point_cloud[:, mask]
     global_pcd = point_cloud
 
-def get_cGAN_result(img, nav):
-    img = Image.fromarray(cv2.cvtColor(img,cv2.COLOR_BGR2RGB))
-    nav = Image.fromarray(cv2.cvtColor(nav,cv2.COLOR_BGR2RGB))
-    img = img_trans(img)
-    nav = img_trans(nav)
-    input_img = torch.cat((img, nav), 0).unsqueeze(0).to(device)
-    result = generator(input_img)
-    result = result.cpu().data.numpy()[0][0]*127+128
-    result = cv2.resize(result, (global_img.shape[1], global_img.shape[0]), interpolation=cv2.INTER_CUBIC)
-    #print(result.max(), result.min())
-    return result
 
 def get_control(x, y, vx, vy):
     global global_vel
@@ -203,18 +191,18 @@ def add_alpha_channel(img):
     return img_BGRA
 
 cnt = 0
-def visualize(img, costmap, nav):
+def visualize(img):
     #print(costmap.shape, nav.shape, img.shape)
     global global_vel, cnt
     #costmap = cv2.cvtColor(costmap,cv2.COLOR_GRAY2RGB)
     text = "speed: "+str(round(3.6*global_vel, 1))+' km/h'
     cv2.putText(img, text, (20, 30), cv2.FONT_HERSHEY_PLAIN, 2.0, (255, 255, 255), 2)
     
-    nav = cv2.resize(nav, (240, 200), interpolation=cv2.INTER_CUBIC)
-    down_img = np.hstack([costmap, nav])
-    down_img = add_alpha_channel(down_img)
-    show_img = np.vstack([img, down_img])
-    cv2.imshow('Result', show_img)
+    #nav = cv2.resize(nav, (240, 200), interpolation=cv2.INTER_CUBIC)
+    #down_img = np.hstack([costmap, nav])
+    #down_img = add_alpha_channel(down_img)
+    #show_img = np.vstack([img, down_img])
+    cv2.imshow('Result', img)
     #cv2.imwrite('result/images/nt-nv-dw/'+str(cnt)+'.png', show_img)
     cv2.waitKey(10)
     cnt += 1
@@ -232,15 +220,20 @@ def draw_traj(cost_map, output):
         draw.line((v[i]-1, u[i], v[i+1]-1, u[i+1]), 'red')
     return cost_map
         
-def get_traj(cost_map, plan_time):
-    global global_v0, draw_cost_map
-    img = Image.fromarray(cv2.cvtColor(cost_map,cv2.COLOR_BGR2RGB)).convert('L')
-    trans_img = cost_map_trans(img)
-    
+def get_traj(plan_time):
+    global global_v0, draw_cost_map, global_img, global_nav
+    #img = Image.fromarray(cv2.cvtColor(cost_map,cv2.COLOR_BGR2RGB)).convert('L')
+    #trans_img = cost_map_trans(img)
+    img = Image.fromarray(cv2.cvtColor(global_img,cv2.COLOR_BGR2RGB)).convert('RGB')
+    nav = Image.fromarray(cv2.cvtColor(global_nav,cv2.COLOR_BGR2RGB)).convert('RGB')
+    img = img_trans(img)
+    nav = img_trans(nav)
+    trans_img = torch.cat((img, nav), 0)
+
     t = torch.arange(0, 0.9, args.dt).unsqueeze(1).to(device)
     t.requires_grad = True
 
-    img = trans_img.expand(len(t),1,args.height, args.width)
+    img = trans_img.expand(len(t),6,args.height, args.width)
     img = img.to(device)
     img.requires_grad = True
     v_0 = torch.FloatTensor([global_v0]).expand(len(t),1)
@@ -256,7 +249,7 @@ def get_traj(cost_map, plan_time):
     y = output[:,1]*args.max_dist
     
     # draw
-    draw_cost_map = draw_traj(cost_map, output)
+    #draw_cost_map = draw_traj(cost_map, output)
     
     vx = vx.data.cpu().numpy()
     vy = vy.data.cpu().numpy()
@@ -272,19 +265,19 @@ def make_plan():
     while True:
         plan_time = global_plan_time
         # 1. get cGAN result
-        result = get_cGAN_result(global_img, global_nav)
+        #result = get_cGAN_result(global_img, global_nav)
         # 2. inverse perspective mapping and get costmap
-        img = copy.deepcopy(global_img)
-        mask = np.where(result > 200)
-        img[mask[0],mask[1]] = (255, 0, 0, 255)
+        #img = copy.deepcopy(global_img)
+        #mask = np.where(result > 200)
+        #img[mask[0],mask[1]] = (255, 0, 0, 255)
         
-        ipm_image = inverse_perspective_mapping.getIPM(result)
-        cost_map = get_cost_map(ipm_image, global_pcd)
+        #ipm_image = inverse_perspective_mapping.getIPM(result)
+        #cost_map = get_cost_map(ipm_image, global_pcd)
         # 3. get trajectory
-        trajectory = get_traj(cost_map, plan_time)
+        trajectory = get_traj(plan_time)
         #time.sleep(0.5)
         global_trajectory = trajectory
-        global_cost_map = cost_map
+        #global_cost_map = cost_map
         if not start_control:
             start_control = True
             
@@ -307,7 +300,7 @@ def get_new_control(x, y, vx, vy, ax, ay):
     Kx = 0.1
     Kv = 3.0
     
-    Ky = 9.0e-3
+    Ky = 1.2e-2
     K_theta = 0.005
     
     control = carla.VehicleControl()
@@ -469,7 +462,8 @@ def main():
         vehicle.apply_control(control)
         
         #print(global_vel*np.tan(control.steer)/w)
-        visualize(global_img, draw_cost_map, global_nav)
+        #visualize(global_img, draw_cost_map, global_nav)
+        visualize(global_img)
         
         #time.sleep(1/60.)
 

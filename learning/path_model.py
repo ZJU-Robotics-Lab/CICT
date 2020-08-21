@@ -17,9 +17,9 @@ def weights_init(m):
         nn.init.constant_(m.bias, 0.01)
 
 class CNN(nn.Module):
-    def __init__(self):
+    def __init__(self,input_dim=1):
         super(CNN, self).__init__()
-        self.conv1 = nn.Conv2d(1,    64, 5, stride=3, padding=2)
+        self.conv1 = nn.Conv2d(input_dim, 64, 5, stride=3, padding=2)
         self.conv2 = nn.Conv2d(64,  128, 5, stride=4, padding=2)
         self.conv3 = nn.Conv2d(128, 256, 3, stride=2, padding=1)
         self.conv4 = nn.Conv2d(256, 256, 3, stride=2, padding=1)
@@ -168,6 +168,17 @@ class Model_COS(nn.Module):
     def __init__(self,rate=1.0):
         super(Model_COS, self).__init__()
         self.cnn = CNN()
+        self.mlp = MLP_COS(rate)
+    
+    def forward(self, x, t, v0):
+        x = self.cnn(x)
+        x = self.mlp(x, t, v0)
+        return x
+    
+class Model_COS_Img(nn.Module):
+    def __init__(self,rate=1.0):
+        super(Model_COS_Img, self).__init__()
+        self.cnn = CNN(input_dim=6)
         self.mlp = MLP_COS(rate)
     
     def forward(self, x, t, v0):
