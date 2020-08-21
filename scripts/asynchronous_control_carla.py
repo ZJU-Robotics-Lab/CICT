@@ -12,7 +12,7 @@ from agents.navigation.basic_agent import BasicAgent
 
 from simulator import config, set_weather, add_vehicle
 from simulator.sensor_manager import SensorManager
-from utils.navigator_sim import get_random_destination, get_map, get_nav, replan, close2dest
+from utils.navigator_sim import get_map, get_nav, replan, close2dest
 from learning.models import GeneratorUNet
 from learning.path_model import Model_COS
 
@@ -28,8 +28,10 @@ import threading
 import random
 import argparse
 import numpy as np
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw
 from datetime import datetime
+import matplotlib.pyplot as plt
+plt.rcParams.update({'figure.max_open_warning': 0})
 
 import torch
 from torch.autograd import grad
@@ -64,7 +66,7 @@ generator = GeneratorUNet()
 generator = generator.to(device)
 generator.load_state_dict(torch.load('../ckpt/sim-obs/g.pth'))
 model = Model_COS().to(device)
-model.load_state_dict(torch.load('../ckpt/sim-obs/model_1222000.pth'))
+model.load_state_dict(torch.load('../ckpt/sim-obs/model.pth'))
 generator.eval()
 model.eval()
 
@@ -175,26 +177,6 @@ def get_cGAN_result(img, nav):
     #print(result.max(), result.min())
     return result
 
-def get_control(x, y, vx, vy):
-    global global_vel
-    control = carla.VehicleControl()
-    control.manual_gear_shift = True
-    control.gear = 1
-
-    v_target = np.sqrt(vx**2+vy**2)
-    yaw = np.arctan2(vy, vx)
-    theta = np.arctan2(y, x)
-    dist = np.sqrt(x**2+y**2)
-    e = dist*np.sin(yaw-theta)
-    K = 0.01
-    Ks = 10.0
-    Kv = 2.0
-    tan_input = K*e/(Ks + global_vel)
-    yaw_target = yaw + np.tan(tan_input)
-    control.throttle = np.clip(0.7 + Kv*(v_target-global_vel), 0., 1.)
-    control.steer = np.clip(0.35*yaw_target, -1., 1.)
-    return control
-
 def add_alpha_channel(img): 
     b_channel, g_channel, r_channel = cv2.split(img)
     alpha_channel = np.ones(b_channel.shape, dtype=b_channel.dtype) * 255
@@ -203,7 +185,7 @@ def add_alpha_channel(img):
     return img_BGRA
 
 cnt = 0
-def visualize(img, costmap, nav):
+def visualize(img, costmap, nav, curve):
     #print(costmap.shape, nav.shape, img.shape)
     global global_vel, cnt
     #costmap = cv2.cvtColor(costmap,cv2.COLOR_GRAY2RGB)
@@ -214,6 +196,10 @@ def visualize(img, costmap, nav):
     down_img = np.hstack([costmap, nav])
     down_img = add_alpha_channel(down_img)
     show_img = np.vstack([img, down_img])
+    #print(show_img.shape, curve.shape)
+    curve = cv2.cvtColor(curve,cv2.COLOR_BGRA2RGBA)
+    left_img = cv2.resize(curve, (int(curve.shape[1]*show_img.shape[0]/curve.shape[0]), show_img.shape[0]), interpolation=cv2.INTER_CUBIC)
+    show_img = np.hstack([show_img, left_img])
     cv2.imshow('Result', show_img)
     #cv2.imwrite('result/images/nt-nv-dw/'+str(cnt)+'.png', show_img)
     cv2.waitKey(10)
@@ -302,7 +288,7 @@ def get_transform(transform, org_transform):
     dyaw = yaw - yaw0
     return dx, dy, dyaw
     
-def get_new_control(x, y, vx, vy, ax, ay):
+def get_control(x, y, vx, vy, ax, ay):
     global global_vel, max_steer_angle, global_a
     Kx = 0.1
     Kv = 3.0
@@ -328,7 +314,7 @@ def get_new_control(x, y, vx, vy, ax, ay):
     v_e = v_r - global_vel
     ####################################
     
-    #v = v_r*np.cos(theta_e) + Kx*x_e
+    #v = v_r*np.cos(theta_e) + Kx*x_eglobal global_trajectory
     w = w_r + v_r*(Ky*y_e + K_theta*np.sin(theta_e))
     
     steer_angle = np.arctan(w*2.405/global_vel)
@@ -346,6 +332,55 @@ def get_new_control(x, y, vx, vy, ax, ay):
         control.brake = np.clip(-0.05*throttle, 0., 1.)
     control.steer = np.clip(steer, -1., 1.)
     return control
+
+def fig2data(fig):
+    import PIL.Image as Image
+    # draw the renderer
+    fig.canvas.draw()
+ 
+    # Get the RGBA buffer from the figure
+    w, h = fig.canvas.get_width_height()
+    buf = np.frombuffer(fig.canvas.tostring_argb(), dtype=np.uint8)
+    buf.shape = (w, h, 4)
+ 
+    # canvas.tostring_argb give pixmap in ARGB mode. Roll the ALPHA channel to have it in RGBA mode
+    buf = np.roll(buf, 3, axis=2)
+    image = Image.frombytes("RGBA", (w, h), buf.tobytes())
+    image = np.asarray(image)
+    return image
+
+def show_traj(trajectory):
+    max_x = 35.
+    max_y = 30.
+    max_speed = 12.0
+    fig = plt.figure()
+    ax1 = fig.add_subplot(111)
+    x = trajectory['x']
+    y = trajectory['y']
+    ax1.plot(x, y, label='trajectory', color = 'b', linewidth=3)
+    ax1.set_xlabel('Tangential/(m)')
+    ax1.set_ylabel('Normal/(m)')
+    ax1.set_xlim([0., max_x])
+    ax1.set_ylim([-max_y, max_y])
+    plt.legend(loc='lower right')
+    
+    t = x[-1]*np.arange(0, 1.0, 1./x.shape[0])
+    vx = trajectory['vx']
+    vy = trajectory['vy']
+    v = np.sqrt(np.power(vx, 2), np.power(vy, 2))
+    angle = np.arctan2(vy, vx)/np.pi*max_speed
+    ax2 = ax1.twinx()
+    ax2.plot(t, v, label='speed', color = 'r', linewidth=2)
+    ax2.plot(t, angle, label='angle', color = 'g', linewidth=2)
+    ax2.set_ylabel('Velocity/(m/s)')
+    ax2.set_ylim([-12.0, 12.0])
+    plt.legend(loc='upper right')
+    #plt.show()
+    
+    image = fig2data(fig)
+    plt.close('all')
+    return image
+    
     
 def main():
     global global_nav, global_vel, start_control, global_plan_map, global_vehicle, global_cost_map, global_transform, max_steer_angle, global_a, draw_cost_map
@@ -465,11 +500,12 @@ def main():
         ax = _ax*np.cos(dyaw) + _ay*np.sin(dyaw)
         ay = _ay*np.cos(dyaw) - _ax*np.sin(dyaw)
         
-        control = get_new_control(x, y, vx, vy, ax, ay)
+        control = get_control(x, y, vx, vy, ax, ay)
         vehicle.apply_control(control)
         
         #print(global_vel*np.tan(control.steer)/w)
-        visualize(global_img, draw_cost_map, global_nav)
+        curve = show_traj(global_trajectory)
+        visualize(global_img, draw_cost_map, global_nav, curve)
         
         #time.sleep(1/60.)
 
