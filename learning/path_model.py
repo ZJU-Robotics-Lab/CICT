@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from siren_pytorch import SirenNet
+import torchvision.models as models
 
 def weights_init(m):
     if isinstance(m, nn.Conv2d):
@@ -167,11 +168,14 @@ class MLP_COS(nn.Module):
 class Model_COS(nn.Module):
     def __init__(self,rate=1.0):
         super(Model_COS, self).__init__()
+        #resnet = models.resnet34(pretrained=True)
+        #self.cnn = nn.Sequential(*list(resnet.children())[0:9])
         self.cnn = CNN()
         self.mlp = MLP_COS(rate)
     
     def forward(self, x, t, v0):
         x = self.cnn(x)
+        #x = x.view(-1, 512)
         x = self.mlp(x, t, v0)
         return x
     

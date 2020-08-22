@@ -24,7 +24,7 @@ class CostMapDataset(Dataset):
         self.max_t = opt.max_t
         transforms_ = [ transforms.Resize((200, 400), Image.BICUBIC),
             transforms.ToTensor(),
-            transforms.Normalize((0.5), (0.5))
+            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
             ]
         
         self.transform = transforms.Compose(transforms_)
@@ -91,7 +91,7 @@ class CostMapDataset(Dataset):
         while True:
             file_name = random.sample(self.files_dict[data_index][:-120], 1)[0]
             image_path = self.dataset_path + str(data_index)+'/ipm/'+file_name+'.png'
-            img = Image.open(image_path).convert('L')
+            img = Image.open(image_path).convert('RGB')
             img = self.transform(img)
             
             x_0 = self.pose_dict[data_index][file_name][0]

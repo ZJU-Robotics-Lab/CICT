@@ -94,6 +94,8 @@ img_trans = transforms.Compose(img_transforms)
 cost_map_transforms_ = [ transforms.Resize((200, 400), Image.BICUBIC),
     transforms.ToTensor(),
     transforms.Normalize((0.5), (0.5))
+    # for resnet backbone
+    #transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
     ]
 cost_map_trans = transforms.Compose(cost_map_transforms_)
         
@@ -130,6 +132,7 @@ def get_cost_map(img, point_cloud):
     
     img = cv2.addWeighted(img,0.7,img2,0.3,0)
     kernel_size = (17, 17)
+    #kernel_size = (11, 11)
     sigma = 21
     img = cv2.GaussianBlur(img, kernel_size, sigma);
     return img
@@ -185,8 +188,7 @@ def add_alpha_channel(img):
     return img_BGRA
 
 cnt = 0
-def visualize(img, costmap, nav, curve):
-    #print(costmap.shape, nav.shape, img.shape)
+def visualize(img, costmap, nav, curve=None):
     global global_vel, cnt
     #costmap = cv2.cvtColor(costmap,cv2.COLOR_GRAY2RGB)
     text = "speed: "+str(round(3.6*global_vel, 1))+' km/h'
@@ -200,8 +202,8 @@ def visualize(img, costmap, nav, curve):
     curve = cv2.cvtColor(curve,cv2.COLOR_BGRA2RGBA)
     left_img = cv2.resize(curve, (int(curve.shape[1]*show_img.shape[0]/curve.shape[0]), show_img.shape[0]), interpolation=cv2.INTER_CUBIC)
     show_img = np.hstack([show_img, left_img])
-    cv2.imshow('Result', show_img)
-    #cv2.imwrite('result/images/nt-nv-dw/'+str(cnt)+'.png', show_img)
+    cv2.imshow('Visualization', show_img)
+    cv2.imwrite('result/images/dynamic02/'+str(cnt)+'.png', show_img)
     cv2.waitKey(10)
     cnt += 1
 
@@ -221,12 +223,17 @@ def draw_traj(cost_map, output):
 def get_traj(cost_map, plan_time):
     global global_v0, draw_cost_map
     img = Image.fromarray(cv2.cvtColor(cost_map,cv2.COLOR_BGR2RGB)).convert('L')
+    # for resnet backbone
+    #img = Image.fromarray(cv2.cvtColor(cost_map,cv2.COLOR_BGR2RGB)).convert('RGB')
     trans_img = cost_map_trans(img)
     
-    t = torch.arange(0, 0.9, args.dt).unsqueeze(1).to(device)
+    #t = torch.arange(0, 0.99, args.dt).unsqueeze(1).to(device)
+    t = torch.arange(0, 0.6, args.dt).unsqueeze(1).to(device)
     t.requires_grad = True
-
+    
     img = trans_img.expand(len(t),1,args.height, args.width)
+    # for resnet backbone
+    #img = trans_img.expand(len(t),3,args.height, args.width)
     img = img.to(device)
     img.requires_grad = True
     v_0 = torch.FloatTensor([global_v0]).expand(len(t),1)
@@ -268,7 +275,7 @@ def make_plan():
         cost_map = get_cost_map(ipm_image, global_pcd)
         # 3. get trajectory
         trajectory = get_traj(cost_map, plan_time)
-        #time.sleep(0.5)
+        time.sleep(0.2)
         global_trajectory = trajectory
         global_cost_map = cost_map
         if not start_control:
@@ -321,8 +328,8 @@ def get_control(x, y, vx, vy, ax, ay):
     steer = steer_angle/max_steer_angle
     #####################################
     
-    throttle = Kx*x_e + Kv*v_e
-    #throttle = 0.7 +(Kx*x_e + Kv*v_e)*0.06
+    #throttle = Kx*x_e + Kv*v_e+0.7
+    throttle = 0.7 +(Kx*x_e + Kv*v_e)*0.06
     #throttle = Kx*x_e + Kv*v_e + global_a
     
     control.brake = 0.0

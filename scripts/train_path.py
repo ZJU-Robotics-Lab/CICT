@@ -30,11 +30,11 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--test_mode', type=bool, default=False, help='test model switch')
-parser.add_argument('--dataset_name', type=str, default="human-data-02", help='name of the dataset')
+parser.add_argument('--dataset_name', type=str, default="resnet34-backbone-01", help='name of the dataset')
 parser.add_argument('--width', type=int, default=400, help='image width')
 parser.add_argument('--height', type=int, default=200, help='image height')
 parser.add_argument('--scale', type=float, default=25., help='longitudinal length')
-parser.add_argument('--batch_size', type=int, default=128, help='size of the batches')
+parser.add_argument('--batch_size', type=int, default=64, help='size of the batches')
 parser.add_argument('--weight_decay', type=float, default=5e-4, help='adam: weight_decay')
 parser.add_argument('--lr', type=float, default=3e-4, help='adam: learning rate')
 parser.add_argument('--gamma', type=float, default=0.2, help='xy and vxy loss trade off')
@@ -47,7 +47,7 @@ parser.add_argument('--max_t', type=float, default=5., help='max time')
 opt = parser.parse_args()
 if opt.test_mode: opt.batch_size = 1
 
-description = 'cos model, add v0, final nodes 256, human-data input, dynamic obstacles'
+description = 'use resnet34 backbone'
 log_path = 'result/log/'+opt.dataset_name+'/'
 os.makedirs('result/saved_models/%s' % opt.dataset_name, exist_ok=True)
 os.makedirs('result/output/%s' % opt.dataset_name, exist_ok=True)
@@ -57,7 +57,7 @@ if not opt.test_mode:
     write_params(log_path, parser, description)
     
 model = Model_COS().to(device)
-model.load_state_dict(torch.load('result/saved_models/human-data-01/model_800000.pth'))
+#model.load_state_dict(torch.load('result/saved_models/human-data-01/model_800000.pth'))
 train_loader = DataLoader(CostMapDataset(data_index=[16,17,18,19,20,21,22,23,24,25,26,27,28,29,31], opt=opt, dataset_path='/media/wang/DATASET/CARLA_HUMAN/town01/'), batch_size=opt.batch_size, shuffle=False, num_workers=opt.n_cpu)
 
 eval_loader = DataLoader(CostMapDataset(data_index=[30], opt=opt, dataset_path='/media/wang/DATASET/CARLA_HUMAN/town01/', evalmode=True), batch_size=1, shuffle=False, num_workers=1)

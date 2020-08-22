@@ -34,7 +34,7 @@ parser.add_argument('--dataset_name', type=str, default="img-input-01", help='na
 parser.add_argument('--width', type=int, default=400, help='image width')
 parser.add_argument('--height', type=int, default=200, help='image height')
 parser.add_argument('--scale', type=float, default=25., help='longitudinal length')
-parser.add_argument('--batch_size', type=int, default=128, help='size of the batches')
+parser.add_argument('--batch_size', type=int, default=16, help='size of the batches')
 parser.add_argument('--weight_decay', type=float, default=5e-4, help='adam: weight_decay')
 parser.add_argument('--lr', type=float, default=3e-4, help='adam: learning rate')
 parser.add_argument('--gamma', type=float, default=0.2, help='xy and vxy loss trade off')
@@ -201,7 +201,7 @@ for i, batch in enumerate(train_loader):
     batch['vxy'] = batch['vxy'].to(device)
     batch['img'].requires_grad = True
     batch['t'].requires_grad = True
-
+    print('yiyiyi', batch['img'].shape, batch['t'].shape, batch['v_0'].shape, batch['xy'].shape)
     #output = model(batch['img'], batch['t'])
     output = model(batch['img'], batch['t'], batch['v_0'])
     vx = grad(output[:,0].sum(), batch['t'], create_graph=True)[0]
