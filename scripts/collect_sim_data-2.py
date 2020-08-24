@@ -11,7 +11,7 @@ sys.path.append('/home/wang/CARLA_0.9.9.4/PythonAPI/carla')
 from agents.navigation.basic_agent import BasicAgent
 from simulator import config, set_weather, add_vehicle
 from simulator.sensor_manager import SensorManager
-from utils.navigator_sim import get_random_destination, get_map, get_nav, replan, close2dest
+from utils.navigator_sim import get_random_destination, get_map, get_nav, replan2, close2dest
 
 import os
 import cv2
@@ -30,11 +30,11 @@ global_pos = None
 global_acceleration = None
 global_angular_velocity = None
 global_vel = None
-MAX_SPEED = 30
+MAX_SPEED = 40
 
 parser = argparse.ArgumentParser(description='Params')
-parser.add_argument('-d', '--data', type=int, default=1, help='data index')
-parser.add_argument('-n', '--num', type=int, default=100000, help='total number')
+parser.add_argument('-d', '--data', type=int, default=7, help='data index')
+parser.add_argument('-n', '--num', type=int, default=50000, help='total number')
 args = parser.parse_args()
 
 data_index = args.data
@@ -100,7 +100,12 @@ def lidar_callback(data):
     point_cloud = point_cloud[:, mask]
     global_pcd = point_cloud
     #world.set_weather(carla.WeatherParameters.ClearNoon)
+class World:
+    def __init__(self, player, carla_world):
+        self.player = player
+        self.world = carla_world
     
+from agents.navigation.behavior_agent import BehaviorAgent    
 def main():
     global global_nav, global_control, global_pos, global_vel, global_acceleration, global_angular_velocity
     client = carla.Client(config['host'], config['port'])
@@ -110,13 +115,14 @@ def main():
     world = client.load_world('Town01')
 
     weather = carla.WeatherParameters(
-        cloudiness=random.randint(0,50),
+        cloudiness=random.randint(0,80),
         precipitation=0,
         sun_altitude_angle=random.randint(40,90)
     )
+    world.set_weather(carla.WeatherParameters.WetSunset)
     
     #world.set_weather(carla.WeatherParameters.ClearNoon)
-    set_weather(world, weather)
+    #set_weather(world, weather)
     
     blueprint = world.get_blueprint_library()
     world_map = world.get_map()
@@ -124,10 +130,10 @@ def main():
     vehicle = add_vehicle(world, blueprint, vehicle_type='vehicle.audi.a2')
     # Enables or disables the simulation of physics on this actor.
     vehicle.set_simulate_physics(True)
-    
+    _world = World(vehicle, world)
     sensor_dict = {
         'camera':{
-            'transform':carla.Transform(carla.Location(x=0.5, y=0.0, z=2.5)),
+            'transform':carla.Transform(carla.Location(x=0.5, y=0.0, z=2.5)),#'transform':carla.Transform(carla.Location(x=-3.0, y=0.0, z=2.5), carla.Rotation(pitch=-20)),
             'callback':image_callback,
             },
         'lidar':{
@@ -144,30 +150,42 @@ def main():
     waypoint_tuple_list = world_map.get_topology()
     origin_map = get_map(waypoint_tuple_list)
 
-    agent = BasicAgent(vehicle, target_speed=MAX_SPEED)
-    
+    #agent = BasicAgent(vehicle, target_speed=MAX_SPEED)
+    agent = BehaviorAgent(vehicle, ignore_traffic_light=True, behavior='normal')
+    _destination = carla.Transform()
+    destination = world.get_random_location_from_navigation()
+    _destination.location = destination
+
     #port = 8000
     #tm = client.get_trafficmanager(port)
-    #vehicle.set_autopilot(True,port)
     #tm.ignore_lights_percentage(vehicle,100)
     
-    destination = get_random_destination(spawn_points)
-    plan_map = replan(agent, destination, copy.deepcopy(origin_map))
+    #destination = get_random_destination(spawn_points)
+    plan_map = replan2(agent, _destination, copy.deepcopy(origin_map))
+    #agent.set_destination(agent.vehicle.get_location(), destination, clean=True)
     
     for cnt in tqdm(range(args.num)):
-        if close2dest(vehicle, destination):
-            destination = get_random_destination(spawn_points)
-            plan_map = replan(agent, destination, copy.deepcopy(origin_map))
+        if close2dest(vehicle, _destination):
+            _destination = carla.Transform()
+            destination = world.get_random_location_from_navigation()
+            _destination.location = destination
+            plan_map = replan2(agent, _destination, copy.deepcopy(origin_map))
+            #agent.set_destination(agent.vehicle.get_location(), destination, clean=True)
 
         if vehicle.is_at_traffic_light():
             traffic_light = vehicle.get_traffic_light()
             if traffic_light.get_state() == carla.TrafficLightState.Red:
                 traffic_light.set_state(carla.TrafficLightState.Green)
-
+            
+        agent.update_information(_world)
+        
+        speed_limit = vehicle.get_speed_limit()
+        agent.get_local_planner().set_speed(speed_limit)
+                
         control = agent.run_step()
         control.manual_gear_shift = False
         global_control = control
-        #vehicle.apply_control(control)
+        vehicle.apply_control(control)
         nav = get_nav(vehicle, plan_map)
 
         global_nav = nav
@@ -180,7 +198,7 @@ def main():
         cv2.imshow('Vision', global_img)
         cv2.waitKey(10)
         index = str(time.time())
-        #save_data(index)
+        save_data(index)
         
     cmd_file.close()
     pos_file.close()

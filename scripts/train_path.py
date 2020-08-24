@@ -17,7 +17,7 @@ from torch.autograd import grad
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
-from learning.path_model import Model, VAE, CNN_SIN, Model_COS
+from learning.path_model import Model_COS
 from learning.costmap_dataset import CostMapDataset
 from utils import write_params
 
@@ -30,7 +30,7 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--test_mode', type=bool, default=False, help='test model switch')
-parser.add_argument('--dataset_name', type=str, default="resnet34-backbone-01", help='name of the dataset')
+parser.add_argument('--dataset_name', type=str, default="new-costmap -1", help='name of the dataset')
 parser.add_argument('--width', type=int, default=400, help='image width')
 parser.add_argument('--height', type=int, default=200, help='image height')
 parser.add_argument('--scale', type=float, default=25., help='longitudinal length')
@@ -43,11 +43,11 @@ parser.add_argument('--n_cpu', type=int, default=16, help='number of cpu threads
 parser.add_argument('--checkpoint_interval', type=int, default=2000, help='interval between model checkpoints')
 parser.add_argument('--test_interval', type=int, default=50, help='interval between model test')
 parser.add_argument('--max_dist', type=float, default=20., help='max distance')
-parser.add_argument('--max_t', type=float, default=5., help='max time')
+parser.add_argument('--max_t', type=float, default=3., help='max time')
 opt = parser.parse_args()
 if opt.test_mode: opt.batch_size = 1
 
-description = 'use resnet34 backbone'
+description = 'new costmap'
 log_path = 'result/log/'+opt.dataset_name+'/'
 os.makedirs('result/saved_models/%s' % opt.dataset_name, exist_ok=True)
 os.makedirs('result/output/%s' % opt.dataset_name, exist_ok=True)

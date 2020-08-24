@@ -66,7 +66,7 @@ generator = GeneratorUNet()
 generator = generator.to(device)
 generator.load_state_dict(torch.load('../ckpt/sim-obs/g.pth'))
 model = Model_COS().to(device)
-model.load_state_dict(torch.load('../ckpt/sim-obs/model.pth'))
+model.load_state_dict(torch.load('../ckpt/sim-obs/model_1872000.pth'))
 generator.eval()
 model.eval()
 
@@ -76,7 +76,7 @@ parser.add_argument('-n', '--num', type=int, default=100000, help='total number'
 parser.add_argument('--width', type=int, default=400, help='image width')
 parser.add_argument('--height', type=int, default=200, help='image height')
 parser.add_argument('--max_dist', type=float, default=20., help='max distance')
-parser.add_argument('--max_t', type=float, default=5., help='max time')
+parser.add_argument('--max_t', type=float, default=3., help='max time')
 parser.add_argument('--scale', type=float, default=25., help='longitudinal length')
 parser.add_argument('--dt', type=float, default=0.005, help='discretization minimum time interval')
 args = parser.parse_args()
@@ -130,10 +130,10 @@ def get_cost_map(img, point_cloud):
     kernel = np.ones((17,17),np.uint8)  
     img2 = cv2.erode(img2,kernel,iterations = 1)
     
-    img = cv2.addWeighted(img,0.7,img2,0.3,0)
-    kernel_size = (17, 17)
-    #kernel_size = (11, 11)
-    sigma = 21
+    img = cv2.addWeighted(img,0.4,img2,0.6,0)
+    #kernel_size = (17, 17)
+    kernel_size = (9, 9)
+    sigma = 9#21
     img = cv2.GaussianBlur(img, kernel_size, sigma);
     return img
 
@@ -199,11 +199,12 @@ def visualize(img, costmap, nav, curve=None):
     down_img = add_alpha_channel(down_img)
     show_img = np.vstack([img, down_img])
     #print(show_img.shape, curve.shape)
-    curve = cv2.cvtColor(curve,cv2.COLOR_BGRA2RGBA)
-    left_img = cv2.resize(curve, (int(curve.shape[1]*show_img.shape[0]/curve.shape[0]), show_img.shape[0]), interpolation=cv2.INTER_CUBIC)
-    show_img = np.hstack([show_img, left_img])
+    if curve is not None:
+        curve = cv2.cvtColor(curve,cv2.COLOR_BGRA2RGBA)
+        left_img = cv2.resize(curve, (int(curve.shape[1]*show_img.shape[0]/curve.shape[0]), show_img.shape[0]), interpolation=cv2.INTER_CUBIC)
+        show_img = np.hstack([show_img, left_img])
     cv2.imshow('Visualization', show_img)
-    cv2.imwrite('result/images/dynamic02/'+str(cnt)+'.png', show_img)
+    #cv2.imwrite('result/images/dynamic02/'+str(cnt)+'.png', show_img)
     cv2.waitKey(10)
     cnt += 1
 
@@ -228,7 +229,7 @@ def get_traj(cost_map, plan_time):
     trans_img = cost_map_trans(img)
     
     #t = torch.arange(0, 0.99, args.dt).unsqueeze(1).to(device)
-    t = torch.arange(0, 0.6, args.dt).unsqueeze(1).to(device)
+    t = torch.arange(0, 0.99, args.dt).unsqueeze(1).to(device)
     t.requires_grad = True
     
     img = trans_img.expand(len(t),1,args.height, args.width)
@@ -275,7 +276,7 @@ def make_plan():
         cost_map = get_cost_map(ipm_image, global_pcd)
         # 3. get trajectory
         trajectory = get_traj(cost_map, plan_time)
-        time.sleep(0.2)
+        #time.sleep(0.2)
         global_trajectory = trajectory
         global_cost_map = cost_map
         if not start_control:
@@ -300,8 +301,8 @@ def get_control(x, y, vx, vy, ax, ay):
     Kx = 0.1
     Kv = 3.0
     
-    Ky = 9.0e-3
-    K_theta = 0.005
+    Ky = 3.0e-2#9.0e-3
+    K_theta = 0.02#0.005
     
     control = carla.VehicleControl()
     control.manual_gear_shift = True
@@ -511,8 +512,8 @@ def main():
         vehicle.apply_control(control)
         
         #print(global_vel*np.tan(control.steer)/w)
-        curve = show_traj(global_trajectory)
-        visualize(global_img, draw_cost_map, global_nav, curve)
+        #curve = show_traj(global_trajectory)
+        visualize(global_img, draw_cost_map, global_nav, curve=None)
         
         #time.sleep(1/60.)
 

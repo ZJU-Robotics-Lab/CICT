@@ -83,6 +83,11 @@ def replan(agent, destination, origin_map):
                            destination.location.z))
     plan_map = draw_route(agent, destination, origin_map)
     return plan_map
+
+def replan2(agent, destination, origin_map):
+    agent.set_destination(agent.vehicle.get_location(), destination.location, clean=True)
+    plan_map = draw_route(agent, destination, origin_map)
+    return plan_map
     
 def close2dest(vehicle, destination):
     return destination.location.distance(vehicle.get_location()) < 30

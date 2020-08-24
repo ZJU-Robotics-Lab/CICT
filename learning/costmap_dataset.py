@@ -24,7 +24,7 @@ class CostMapDataset(Dataset):
         self.max_t = opt.max_t
         transforms_ = [ transforms.Resize((200, 400), Image.BICUBIC),
             transforms.ToTensor(),
-            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
+            transforms.Normalize((0.5), (0.5)),
             ]
         
         self.transform = transforms.Compose(transforms_)
@@ -69,7 +69,7 @@ class CostMapDataset(Dataset):
         self.vel_dict[index] = ts_dict
     
     def read_img(self, index):
-        files = glob.glob(self.dataset_path+str(index)+'/ipm/*.png')
+        files = glob.glob(self.dataset_path+str(index)+'/ipm2/*.png')
         file_names = []
         for file in files:
             file_name = file.split('/')[-1][:-4]
@@ -90,8 +90,8 @@ class CostMapDataset(Dataset):
         data_index = random.sample(self.data_index, 1)[0]
         while True:
             file_name = random.sample(self.files_dict[data_index][:-120], 1)[0]
-            image_path = self.dataset_path + str(data_index)+'/ipm/'+file_name+'.png'
-            img = Image.open(image_path).convert('RGB')
+            image_path = self.dataset_path + str(data_index)+'/ipm2/'+file_name+'.png'
+            img = Image.open(image_path).convert('L')
             img = self.transform(img)
             
             x_0 = self.pose_dict[data_index][file_name][0]
@@ -105,20 +105,17 @@ class CostMapDataset(Dataset):
             y_list = []
             for i in range(ts_index+1, len(self.files_dict[data_index])-100):
                 ts = self.files_dict[data_index][i]
-                
-                _x_t = self.pose_dict[data_index][ts][0]
-                _y_t = self.pose_dict[data_index][ts][1]
-                distance = np.sqrt((x_0-_x_t)**2+(y_0-_y_t)**2)
-                if distance > self.max_dist or (float(ts)-float(file_name) > self.max_t):
+                #_x_t = self.pose_dict[data_index][ts][0]
+                #_y_t = self.pose_dict[data_index][ts][1]
+                #distance = np.sqrt((x_0-_x_t)**2+(y_0-_y_t)**2)
+                #if distance > self.max_dist or (float(ts)-float(file_name) > self.max_t):
+                if float(ts)-float(file_name) > self.max_t:
                     break
                 else:
-                    if distance < 0.03:
-                        pass
-                    else:
-                        x_, y_ = self.tf_pose(data_index, ts, yaw, x_0, y_0)
-                        x_list.append(x_)
-                        y_list.append(y_)
-                        ts_list.append(ts)
+                    x_, y_ = self.tf_pose(data_index, ts, yaw, x_0, y_0)
+                    x_list.append(x_)
+                    y_list.append(y_)
+                    ts_list.append(ts)
                         
             if len(ts_list) == 0:
                 continue
