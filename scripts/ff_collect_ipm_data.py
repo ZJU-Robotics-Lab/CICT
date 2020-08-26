@@ -29,7 +29,7 @@ parser.add_argument('-n', '--num', type=int, default=100000, help='total number'
 args = parser.parse_args()
 data_index = args.data
 
-save_path = '/media/wang/DATASET/CARLA_HUMAN/town01/'+str(data_index)+'/'
+save_path = '/media/wang/DATASET/CARLA/town01/'+str(data_index)+'/'
 
 def mkdir(path):
     if not os.path.exists(save_path+path):

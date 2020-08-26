@@ -33,7 +33,7 @@ global_vel = None
 MAX_SPEED = 40
 
 parser = argparse.ArgumentParser(description='Params')
-parser.add_argument('-d', '--data', type=int, default=7, help='data index')
+parser.add_argument('-d', '--data', type=int, default=10, help='data index')
 parser.add_argument('-n', '--num', type=int, default=50000, help='total number')
 args = parser.parse_args()
 
@@ -119,10 +119,8 @@ def main():
         precipitation=0,
         sun_altitude_angle=random.randint(40,90)
     )
-    world.set_weather(carla.WeatherParameters.WetSunset)
-    
-    #world.set_weather(carla.WeatherParameters.ClearNoon)
-    #set_weather(world, weather)
+    #world.set_weather(carla.WeatherParameters.MidRainSunset)
+    set_weather(world, weather)
     
     blueprint = world.get_blueprint_library()
     world_map = world.get_map()
@@ -164,7 +162,8 @@ def main():
     plan_map = replan2(agent, _destination, copy.deepcopy(origin_map))
     #agent.set_destination(agent.vehicle.get_location(), destination, clean=True)
     
-    for cnt in tqdm(range(args.num)):
+    #for cnt in tqdm(range(args.num)):
+    for cnt in range(args.num):
         if close2dest(vehicle, _destination):
             _destination = carla.Transform()
             destination = world.get_random_location_from_navigation()
@@ -181,7 +180,7 @@ def main():
         
         speed_limit = vehicle.get_speed_limit()
         agent.get_local_planner().set_speed(speed_limit)
-                
+        
         control = agent.run_step()
         control.manual_gear_shift = False
         global_control = control
@@ -194,11 +193,17 @@ def main():
         global_acceleration = vehicle.get_acceleration()
         global_angular_velocity = vehicle.get_angular_velocity()
         
+        #yaw = global_pos.rotation.yaw
+        #_ax = global_acceleration.x
+        #_ay = global_acceleration.y
+        #ax = _ax*np.cos(yaw) + _ay*np.sin(yaw)
+        #ay = _ay*np.cos(yaw) - _ax*np.sin(yaw)
+        
         #cv2.imshow('Nav', nav)
         cv2.imshow('Vision', global_img)
         cv2.waitKey(10)
         index = str(time.time())
-        save_data(index)
+        #save_data(index)
         
     cmd_file.close()
     pos_file.close()

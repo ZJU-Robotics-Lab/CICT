@@ -12,8 +12,8 @@ import argparse
 import time
 from tqdm import tqdm
 
-MAX_SPEED = 30
-TRAJ_LENGTH = 20#25
+MAX_SPEED = 40
+TRAJ_LENGTH = 25#25
 vehicle_width = 2.0
 longitudinal_sample_number_near = 8
 longitudinal_sample_number_far = 0.5
@@ -26,7 +26,7 @@ parser.add_argument('-n', '--num', type=int, default=100000, help='total number'
 args = parser.parse_args()
 data_index = args.data
 
-save_path = '/media/wang/DATASET/CARLA_HUMAN/town01/'+str(data_index)+'/'
+save_path = '/media/wang/DATASET/CARLA/town01/'+str(data_index)+'/'
 
 sensor_dict = {
     'camera':{

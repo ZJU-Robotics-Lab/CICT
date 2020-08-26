@@ -31,12 +31,14 @@ class CostMapDataset(Dataset):
         self.dataset_path = dataset_path
         self.pose_dict = {}
         self.vel_dict = {}
+        self.acc_dict = {}
         self.files_dict = {}
         self.total_len = 0
         
         for index in self.data_index:
             self.read_pose(index)
             self.read_vel(index)
+            self.read_acc(index)
             self.read_img(index)
         
     def read_pose(self, index):
@@ -67,6 +69,20 @@ class CostMapDataset(Dataset):
                 vz = float(sp_line[3])
                 ts_dict[ts] = [vx, vy, vz]
         self.vel_dict[index] = ts_dict
+        
+    def read_acc(self, index):
+        file_path = self.dataset_path+str(index)+'/state/acc.txt'
+        ts_dict = {}
+        with open(file_path, 'r') as file:
+            lines = file.readlines()
+            for line in lines:
+                sp_line = line.split()
+                ts = sp_line[0]
+                ax = float(sp_line[1])
+                ay = float(sp_line[2])
+                az = float(sp_line[3])
+                ts_dict[ts] = [ax, ay, az]
+        self.acc_dict[index] = ts_dict
     
     def read_img(self, index):
         files = glob.glob(self.dataset_path+str(index)+'/ipm2/*.png')
@@ -124,31 +140,40 @@ class CostMapDataset(Dataset):
                 break
         # [0 ~ 1]
         t = torch.FloatTensor([float(ts)/self.max_t - float(file_name)/self.max_t])
+        # v0
         _vx_0 = self.vel_dict[data_index][file_name][0]
         _vy_0 = self.vel_dict[data_index][file_name][1]
-        vx_0 = np.cos(yaw)*_vx_0 + np.sin(yaw)*_vy_0
+        #vx_0 = np.cos(yaw)*_vx_0 + np.sin(yaw)*_vy_0
         #vy_0 = np.cos(yaw)*_vy_0 - np.sin(yaw)*_vx_0
-        v_0 = torch.FloatTensor([vx_0])
+        v_0 = np.sqrt(_vx_0*_vx_0 + _vy_0*_vy_0)
+        v_0 = torch.FloatTensor([v_0])
+        # x, y
         x, y = self.tf_pose(data_index, ts, yaw, x_0, y_0)
-        # [-1, 1]
-        xy = torch.FloatTensor([x/self.max_dist, y/self.max_dist])
-        
+        xy = torch.FloatTensor([x/self.max_dist, y/self.max_dist])# [-1, 1]
+        # yaw_t
         yaw_t = angle_normal(np.deg2rad(self.pose_dict[data_index][ts][3]) - yaw)
-        # [-1, 1]
-        yaw_t = torch.FloatTensor([yaw_t/np.pi])
-    
+        yaw_t = torch.FloatTensor([yaw_t/np.pi])# [-1, 1]
+        
+        # vx, vy
         _vx = self.vel_dict[data_index][ts][0]
         _vy = self.vel_dict[data_index][ts][1]
         vx = np.cos(yaw)*_vx + np.sin(yaw)*_vy
         vy = np.cos(yaw)*_vy - np.sin(yaw)*_vx
         
+        # ax, ay
+        _ax = self.acc_dict[data_index][ts][0]
+        _ay = self.acc_dict[data_index][ts][1]
+        ax = _ax*np.cos(yaw) + _ay*np.sin(yaw)
+        ay = _ay*np.cos(yaw) - _ax*np.sin(yaw)
+        
         vxy = torch.FloatTensor([vx, vy])
+        axy = torch.FloatTensor([ax, ay])
         x_list = torch.FloatTensor(x_list)
         y_list = torch.FloatTensor(y_list)
         if self.evalmode:
-            return {'img': img, 't': t, 'xy':xy, 'vxy':vxy, 'v_0':v_0, 'yaw_t': yaw_t, 'x_list':x_list, 'y_list':y_list}
+            return {'img': img, 't': t, 'xy':xy, 'vxy':vxy, 'axy':axy, 'v_0':v_0, 'yaw_t': yaw_t, 'x_list':x_list, 'y_list':y_list}
         else:
-            return {'img': img, 't': t, 'xy':xy, 'vxy':vxy, 'v_0':v_0}
+            return {'img': img, 't': t, 'xy':xy, 'vxy':vxy, 'axy':axy, 'v_0':v_0}
 
     def __len__(self):
         return 100000000000

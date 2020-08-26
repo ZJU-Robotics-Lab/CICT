@@ -66,7 +66,7 @@ generator = GeneratorUNet()
 generator = generator.to(device)
 generator.load_state_dict(torch.load('../ckpt/sim-obs/g.pth'))
 model = Model_COS().to(device)
-model.load_state_dict(torch.load('../ckpt/sim-obs/model_1872000.pth'))
+model.load_state_dict(torch.load('../ckpt/ai-data/model_596000.pth'))
 generator.eval()
 model.eval()
 
@@ -75,7 +75,7 @@ parser.add_argument('-d', '--data', type=int, default=1, help='data index')
 parser.add_argument('-n', '--num', type=int, default=100000, help='total number')
 parser.add_argument('--width', type=int, default=400, help='image width')
 parser.add_argument('--height', type=int, default=200, help='image height')
-parser.add_argument('--max_dist', type=float, default=20., help='max distance')
+parser.add_argument('--max_dist', type=float, default=25., help='max distance')
 parser.add_argument('--max_t', type=float, default=3., help='max time')
 parser.add_argument('--scale', type=float, default=25., help='longitudinal length')
 parser.add_argument('--dt', type=float, default=0.005, help='discretization minimum time interval')
@@ -298,11 +298,11 @@ def get_transform(transform, org_transform):
     
 def get_control(x, y, vx, vy, ax, ay):
     global global_vel, max_steer_angle, global_a
-    Kx = 0.1
-    Kv = 3.0
+    Kx = 0.3
+    Kv = 3.0*1.5
     
-    Ky = 3.0e-2#9.0e-3
-    K_theta = 0.02#0.005
+    Ky = 9.0e-3
+    K_theta = 0.05#0.005
     
     control = carla.VehicleControl()
     control.manual_gear_shift = True
@@ -330,14 +330,16 @@ def get_control(x, y, vx, vy, ax, ay):
     #####################################
     
     #throttle = Kx*x_e + Kv*v_e+0.7
-    throttle = 0.7 +(Kx*x_e + Kv*v_e)*0.06
-    #throttle = Kx*x_e + Kv*v_e + global_a
+    #throttle = 0.7 +(Kx*x_e + Kv*v_e)*0.06
+    #throttle = Kx*x_e + Kv*v_e+0.5
+    throttle = Kx*x_e + Kv*v_e + global_a
     
     control.brake = 0.0
     if throttle > 0:
         control.throttle = np.clip(throttle, 0., 1.)
     else:
-        control.brake = np.clip(-0.05*throttle, 0., 1.)
+        #control.brake = np.clip(-0.05*throttle, 0., 1.)
+        control.brake = np.clip(100*throttle, 0., 1.)
     control.steer = np.clip(steer, -1., 1.)
     return control
 
@@ -358,7 +360,7 @@ def fig2data(fig):
     return image
 
 def show_traj(trajectory):
-    max_x = 35.
+    max_x = 30.
     max_y = 30.
     max_speed = 12.0
     fig = plt.figure()
@@ -481,7 +483,7 @@ def main():
         avg_dt = 0.99*avg_dt + 0.01*dt
         #print(round(avg_dt, 3))
         index = int((dt/args.max_t)//args.dt)
-        if index > 0.9/args.dt:
+        if index > 0.99/args.dt:
             continue
         
         location = vehicle.get_location()
@@ -512,8 +514,8 @@ def main():
         vehicle.apply_control(control)
         
         #print(global_vel*np.tan(control.steer)/w)
-        #curve = show_traj(global_trajectory)
-        visualize(global_img, draw_cost_map, global_nav, curve=None)
+        curve = None#show_traj(global_trajectory)
+        visualize(global_img, draw_cost_map, global_nav, curve)
         
         #time.sleep(1/60.)
 
