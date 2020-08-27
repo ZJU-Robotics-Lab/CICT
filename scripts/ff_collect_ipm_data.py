@@ -35,7 +35,7 @@ def mkdir(path):
     if not os.path.exists(save_path+path):
         os.makedirs(save_path+path)
         
-mkdir('ipm2/')
+mkdir('ipm/')
 
 def read_pm_time_stamp(dir_path):
     img_name_list = os.listdir(dir_path)
@@ -121,15 +121,22 @@ def get_cost_map(img, point_cloud):
     v = v[mask]
 
     img2[u,v] = 0
-    
     kernel = np.ones((17,17),np.uint8)  
     img2 = cv2.erode(img2,kernel,iterations = 1)
     
-    img = cv2.addWeighted(img,0.4,img2,0.6,0)
+    kernel_size = (3, 3)
+    img = cv2.dilate(img,kernel_size,iterations = 3)
+    
+    img = cv2.addWeighted(img,0.5,img2,0.5,0)
+    
+    mask = np.where((img2 < 50))
+    u = mask[0]
+    v = mask[1]
+    img[u, v] = 0
     #kernel_size = (17, 17)
-    kernel_size = (9, 9)
-    sigma = 9#21
-    img = cv2.GaussianBlur(img, kernel_size, sigma);
+    #kernel_size = (9, 9)
+    #sigma = 9#21
+    #img = cv2.GaussianBlur(img, kernel_size, sigma)
     return img
 
 def main():
@@ -154,7 +161,7 @@ def main():
             #tick2 = time.time()
     
             img = get_cost_map(ipm_image, pcd)
-            cv2.imwrite(save_path+'ipm2/'+str(time_stamp)+'.png', img)
+            cv2.imwrite(save_path+'ipm/'+str(time_stamp)+'.png', img)
             #cv2.imshow('ipm_image', img)
             #cv2.waitKey(16)
             #print('time total: ' + str(tick2-tick1))

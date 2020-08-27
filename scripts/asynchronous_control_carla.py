@@ -66,7 +66,7 @@ generator = GeneratorUNet()
 generator = generator.to(device)
 generator.load_state_dict(torch.load('../ckpt/sim-obs/g.pth'))
 model = Model_COS().to(device)
-model.load_state_dict(torch.load('../ckpt/ai-data/model_596000.pth'))
+model.load_state_dict(torch.load('../ckpt/ai-data/model_810000.pth'))
 generator.eval()
 model.eval()
 
@@ -264,6 +264,7 @@ def get_traj(cost_map, plan_time):
 def make_plan():
     global global_img, global_nav, global_pcd, global_plan_time, global_trajectory,start_control, global_cost_map
     while True:
+        t1 = time.time()
         plan_time = global_plan_time
         # 1. get cGAN result
         result = get_cGAN_result(global_img, global_nav)
@@ -281,6 +282,8 @@ def make_plan():
         global_cost_map = cost_map
         if not start_control:
             start_control = True
+        t2 = time.time()
+        print('time:', 1000*(t2-t1))
             
 
 def get_transform(transform, org_transform):
@@ -359,37 +362,37 @@ def fig2data(fig):
     image = np.asarray(image)
     return image
 
-def show_traj(trajectory):
+#def show_traj(trajectory, show=False):
+def show_traj():
+    global global_trajectory
     max_x = 30.
     max_y = 30.
     max_speed = 12.0
-    fig = plt.figure()
-    ax1 = fig.add_subplot(111)
-    x = trajectory['x']
-    y = trajectory['y']
-    ax1.plot(x, y, label='trajectory', color = 'b', linewidth=3)
-    ax1.set_xlabel('Tangential/(m)')
-    ax1.set_ylabel('Normal/(m)')
-    ax1.set_xlim([0., max_x])
-    ax1.set_ylim([-max_y, max_y])
-    plt.legend(loc='lower right')
-    
-    t = x[-1]*np.arange(0, 1.0, 1./x.shape[0])
-    vx = trajectory['vx']
-    vy = trajectory['vy']
-    v = np.sqrt(np.power(vx, 2), np.power(vy, 2))
-    angle = np.arctan2(vy, vx)/np.pi*max_speed
-    ax2 = ax1.twinx()
-    ax2.plot(t, v, label='speed', color = 'r', linewidth=2)
-    ax2.plot(t, angle, label='angle', color = 'g', linewidth=2)
-    ax2.set_ylabel('Velocity/(m/s)')
-    ax2.set_ylim([-12.0, 12.0])
-    plt.legend(loc='upper right')
-    #plt.show()
-    
-    image = fig2data(fig)
-    plt.close('all')
-    return image
+    while True:
+        trajectory = global_trajectory
+        fig = plt.figure()
+        ax1 = fig.add_subplot(111)
+        x = trajectory['x']
+        y = trajectory['y']
+        ax1.plot(x, y, label='trajectory', color = 'b', linewidth=3)
+        ax1.set_xlabel('Tangential/(m)')
+        ax1.set_ylabel('Normal/(m)')
+        ax1.set_xlim([0., max_x])
+        ax1.set_ylim([-max_y, max_y])
+        plt.legend(loc='lower right')
+        
+        t = x[-1]*np.arange(0, 1.0, 1./x.shape[0])
+        vx = trajectory['vx']
+        vy = trajectory['vy']
+        v = np.sqrt(np.power(vx, 2), np.power(vy, 2))
+        angle = np.arctan2(vy, vx)/np.pi*max_speed
+        ax2 = ax1.twinx()
+        ax2.plot(t, v, label='speed', color = 'r', linewidth=2)
+        ax2.plot(t, angle, label='angle', color = 'g', linewidth=2)
+        ax2.set_ylabel('Velocity/(m/s)')
+        ax2.set_ylim([-12.0, 12.0])
+        plt.legend(loc='upper right')
+        plt.show()
     
     
 def main():
@@ -447,6 +450,7 @@ def main():
 
     # start to plan
     plan_thread = threading.Thread(target = make_plan, args=())
+    visualization_thread = threading.Thread(target = show_traj, args=())
     while True:
         if (global_img is not None) and (global_nav is not None) and (global_pcd is not None):
             plan_thread.start()
@@ -458,6 +462,7 @@ def main():
     while not start_control:
         time.sleep(0.001)
     
+    visualization_thread.start()
     # start to control
     print('Start to control')
     avg_dt = 1.0
@@ -514,7 +519,7 @@ def main():
         vehicle.apply_control(control)
         
         #print(global_vel*np.tan(control.steer)/w)
-        curve = None#show_traj(global_trajectory)
+        curve = None#show_traj(True)
         visualize(global_img, draw_cost_map, global_nav, curve)
         
         #time.sleep(1/60.)

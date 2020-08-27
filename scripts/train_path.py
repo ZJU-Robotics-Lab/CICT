@@ -30,7 +30,7 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--test_mode', type=bool, default=False, help='test model switch')
-parser.add_argument('--dataset_name', type=str, default="ai-data-02", help='name of the dataset')
+parser.add_argument('--dataset_name', type=str, default="test", help='name of the dataset')
 parser.add_argument('--width', type=int, default=400, help='image width')
 parser.add_argument('--height', type=int, default=200, help='image height')
 parser.add_argument('--scale', type=float, default=25., help='longitudinal length')
@@ -41,13 +41,13 @@ parser.add_argument('--gamma', type=float, default=0.2, help='xy and vxy loss tr
 parser.add_argument('--gamma2', type=float, default=0.01, help='xy and axy loss trade off')
 parser.add_argument('--n_cpu', type=int, default=16, help='number of cpu threads to use during batch generation')
 parser.add_argument('--checkpoint_interval', type=int, default=2000, help='interval between model checkpoints')
-parser.add_argument('--test_interval', type=int, default=500, help='interval between model test')
+parser.add_argument('--test_interval', type=int, default=10, help='interval between model test')
 parser.add_argument('--max_dist', type=float, default=25., help='max distance')
 parser.add_argument('--max_t', type=float, default=3., help='max time')
 opt = parser.parse_args()
 if opt.test_mode: opt.batch_size = 1
 
-description = 'ai-data-02'
+description = 'ai-data-03'
 log_path = 'result/log/'+opt.dataset_name+'/'
 os.makedirs('result/saved_models/%s' % opt.dataset_name, exist_ok=True)
 os.makedirs('result/output/%s' % opt.dataset_name, exist_ok=True)
@@ -130,14 +130,16 @@ def eval_error(total_step):
     abs_y = []
     abs_vx = []
     abs_vy = []
-    abs_ax = []
-    abs_ay = []
+    #abs_ax = []
+    #abs_ay = []
+    abs_a = []
     rel_x = []
     rel_y = []
     rel_vx = []
     rel_vy = []
-    rel_ax = []
-    rel_ay = []
+    #rel_ax = []
+    #rel_ay = []
+    rel_a = []
     for i in range(100):
         batch = next(eval_samples)
         batch['img'] = batch['img'].to(device)
@@ -154,23 +156,32 @@ def eval_error(total_step):
         vx = (opt.max_dist/opt.max_t)*grad(output[:,0].sum(), batch['t'], create_graph=True)[0]
         vy = (opt.max_dist/opt.max_t)*grad(output[:,1].sum(), batch['t'], create_graph=True)[0]
         
-        ax = grad(vx.sum(), batch['t'], create_graph=True)[0]/opt.max_t
-        ay = grad(vy.sum(), batch['t'], create_graph=True)[0]/opt.max_t
+        ax = grad(vx.sum(), batch['t'], create_graph=True)[0]
+        ay = grad(vy.sum(), batch['t'], create_graph=True)[0]
+        output_axy = (1./opt.max_t)*torch.cat([ax, ay], dim=1)
         
+        theta_a = torch.atan2(ay, ax)
+        theta_v = torch.atan2(vy, vx)
+        sign = torch.sign(torch.cos(theta_a-theta_v))
+        a = torch.mul(torch.norm(output_axy, dim=1), sign.flatten()).unsqueeze(1)
+    
         gen = output.data.cpu().numpy()[0]
         real = batch['xy'].data.cpu().numpy()[0]
         vx = vx.data.cpu().numpy()[0][0]
         vy = vy.data.cpu().numpy()[0][0]
-        ax = ax.data.cpu().numpy()[0][0]
-        ay = ay.data.cpu().numpy()[0][0]
+        #ax = ax.data.cpu().numpy()[0][0]
+        #ay = ay.data.cpu().numpy()[0][0]
+        a = a.data.cpu().numpy()[0][0]
         real_v = batch['vxy'].data.cpu().numpy()[0]
-        real_a = batch['axy'].data.cpu().numpy()[0]
+        #real_a = batch['axy'].data.cpu().numpy()[0]
+        real_a = batch['a'].data.cpu().numpy()[0]
         abs_x.append(abs(gen[0]-real[0]))
         abs_y.append(abs(gen[1]-real[1]))
         abs_vx.append(abs(vx - real_v[0]))
         abs_vy.append(abs(vy - real_v[1]))
-        abs_ax.append(abs(ax - real_a[0]))
-        abs_ay.append(abs(ay - real_a[1]))
+        abs_a.append(abs(a - real_a))
+        #abs_ax.append(abs(ax - real_a[0]))
+        #abs_ay.append(abs(ay - real_a[1]))
         if abs(real[0]) > 0.05:
             rel_x.append(abs(gen[0]-real[0])/(abs(real[0])))
         if abs(real[1]) > 0.05:
@@ -179,17 +190,20 @@ def eval_error(total_step):
             rel_vx.append(abs(vx - real_v[0])/(abs(real_v[0])))
         if abs(real_v[1]) > 0.05:
             rel_vy.append(abs(vy - real_v[1])/(abs(real_v[1])))
-        if abs(real_a[0]) > 0.05:
-            rel_ax.append(abs(ax - real_a[0])/(abs(real_a[0])))
-        if abs(real_a[1]) > 0.05:
-            rel_ay.append(abs(ay - real_a[1])/(abs(real_a[1])))
+        #if abs(real_a[0]) > 0.05:
+        #    rel_ax.append(abs(ax - real_a[0])/(abs(real_a[0])))
+        #if abs(real_a[1]) > 0.05:
+        #    rel_ay.append(abs(ay - real_a[1])/(abs(real_a[1])))
+        if abs(real_a) > 0.05:
+            rel_a.append(abs(a - real_a)/(abs(real_a)))
 
     logger.add_scalar('eval/x', opt.max_dist*sum(abs_x)/len(abs_x), total_step)
     logger.add_scalar('eval/y', opt.max_dist*sum(abs_y)/len(abs_y), total_step)
     logger.add_scalar('eval/vx', sum(abs_vx)/len(abs_vx), total_step)
     logger.add_scalar('eval/vy', sum(abs_vy)/len(abs_vy), total_step)
-    logger.add_scalar('eval/ax', sum(abs_ax)/len(abs_ax), total_step)
-    logger.add_scalar('eval/ay', sum(abs_ay)/len(abs_ay), total_step)
+    #logger.add_scalar('eval/ax', sum(abs_ax)/len(abs_ax), total_step)
+    #logger.add_scalar('eval/ay', sum(abs_ay)/len(abs_ay), total_step)
+    logger.add_scalar('eval/a', sum(abs_a)/len(abs_a), total_step)
 
     if len(rel_x) > 0:
         logger.add_scalar('eval/rel_x', sum(rel_x)/len(rel_x), total_step)
@@ -199,10 +213,12 @@ def eval_error(total_step):
         logger.add_scalar('eval/rel_vx', sum(rel_vx)/len(rel_vx), total_step)
     if len(rel_vy) > 0:
         logger.add_scalar('eval/rel_vy', sum(rel_vy)/len(rel_vy), total_step)
-    if len(rel_ax) > 0:
-        logger.add_scalar('eval/rel_ax', sum(rel_ax)/len(rel_ax), total_step)
-    if len(rel_ay) > 0:
-        logger.add_scalar('eval/rel_ay', sum(rel_ay)/len(rel_ay), total_step)
+    #if len(rel_ax) > 0:
+    #    logger.add_scalar('eval/rel_ax', sum(rel_ax)/len(rel_ax), total_step)
+    #if len(rel_ay) > 0:
+    #    logger.add_scalar('eval/rel_ay', sum(rel_ay)/len(rel_ay), total_step)
+    if len(rel_a) > 0:
+        logger.add_scalar('eval/rel_a', sum(rel_a)/len(rel_a), total_step)
     model.train()
 
 total_step = 0
@@ -222,7 +238,8 @@ for i, batch in enumerate(train_loader):
     batch['v_0'] = batch['v_0'].to(device)
     batch['xy'] = batch['xy'].to(device)
     batch['vxy'] = batch['vxy'].to(device)
-    batch['axy'] = batch['axy'].to(device)
+    #batch['axy'] = batch['axy'].to(device)
+    batch['a'] = batch['a'].to(device)
     batch['img'].requires_grad = True
     batch['t'].requires_grad = True
 
@@ -234,13 +251,19 @@ for i, batch in enumerate(train_loader):
     ax = grad(vx.sum(), batch['t'], create_graph=True)[0]
     ay = grad(vy.sum(), batch['t'], create_graph=True)[0]
     output_axy = (1./opt.max_t)*torch.cat([ax, ay], dim=1)
+    
+    theta_a = torch.atan2(ay, ax)
+    theta_v = torch.atan2(vy, vx)
+    sign = torch.sign(torch.cos(theta_a-theta_v))
+    a = torch.mul(torch.norm(output_axy, dim=1), sign.flatten()).unsqueeze(1)
 
     optimizer.zero_grad()
     loss_xy = criterion(output, batch['xy'])
     loss_vxy = criterion(output_vxy, batch['vxy'])
-    loss_axy = criterion(output_axy, batch['axy'])
+    #loss_axy = criterion(output_axy, batch['axy'])
+    loss_axy = criterion(a, batch['a'])
     loss = loss_xy + opt.gamma*loss_vxy + opt.gamma2*loss_axy
-    
+
     loss.backward()
     torch.nn.utils.clip_grad_value_(model.parameters(), clip_value=1)
     optimizer.step()

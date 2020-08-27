@@ -136,7 +136,9 @@ class CostMapDataset(Dataset):
             if len(ts_list) == 0:
                 continue
             else:
-                ts = random.sample(ts_list, 1)[0]
+                #ts = random.sample(ts_list, 1)[0]
+                weights = [np.exp(-float(ts)) for ts in ts_list]
+                ts = random.choices(ts_list, weights)[0]
                 break
         # [0 ~ 1]
         t = torch.FloatTensor([float(ts)/self.max_t - float(file_name)/self.max_t])
@@ -166,14 +168,20 @@ class CostMapDataset(Dataset):
         ax = _ax*np.cos(yaw) + _ay*np.sin(yaw)
         ay = _ay*np.cos(yaw) - _ax*np.sin(yaw)
         
+        theta_a = np.arctan2(ay, ax)
+        theta_v = np.arctan2(vy, vx)
+        sign = np.sign(np.cos(theta_a-theta_v))
+        a = sign*np.sqrt(ax*ax + ay*ay)
+        a = torch.FloatTensor([a])
+        
         vxy = torch.FloatTensor([vx, vy])
         axy = torch.FloatTensor([ax, ay])
         x_list = torch.FloatTensor(x_list)
         y_list = torch.FloatTensor(y_list)
         if self.evalmode:
-            return {'img': img, 't': t, 'xy':xy, 'vxy':vxy, 'axy':axy, 'v_0':v_0, 'yaw_t': yaw_t, 'x_list':x_list, 'y_list':y_list}
+            return {'img': img, 't': t, 'xy':xy, 'vxy':vxy, 'axy':axy, 'a':a, 'v_0':v_0, 'yaw_t': yaw_t, 'x_list':x_list, 'y_list':y_list}
         else:
-            return {'img': img, 't': t, 'xy':xy, 'vxy':vxy, 'axy':axy, 'v_0':v_0}
+            return {'img': img, 't': t, 'xy':xy, 'vxy':vxy, 'axy':axy, 'a':a, 'v_0':v_0}
 
     def __len__(self):
         return 100000000000
