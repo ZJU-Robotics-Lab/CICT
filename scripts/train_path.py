@@ -34,20 +34,20 @@ parser.add_argument('--dataset_name', type=str, default="test", help='name of th
 parser.add_argument('--width', type=int, default=400, help='image width')
 parser.add_argument('--height', type=int, default=200, help='image height')
 parser.add_argument('--scale', type=float, default=25., help='longitudinal length')
-parser.add_argument('--batch_size', type=int, default=64, help='size of the batches')
+parser.add_argument('--batch_size', type=int, default=2, help='size of the batches')
 parser.add_argument('--weight_decay', type=float, default=5e-4, help='adam: weight_decay')
 parser.add_argument('--lr', type=float, default=3e-4, help='adam: learning rate')
 parser.add_argument('--gamma', type=float, default=0.2, help='xy and vxy loss trade off')
-parser.add_argument('--gamma2', type=float, default=0.01, help='xy and axy loss trade off')
+parser.add_argument('--gamma2', type=float, default=0.0, help='xy and axy loss trade off')
 parser.add_argument('--n_cpu', type=int, default=16, help='number of cpu threads to use during batch generation')
 parser.add_argument('--checkpoint_interval', type=int, default=2000, help='interval between model checkpoints')
-parser.add_argument('--test_interval', type=int, default=10, help='interval between model test')
+parser.add_argument('--test_interval', type=int, default=500, help='interval between model test')
 parser.add_argument('--max_dist', type=float, default=25., help='max distance')
 parser.add_argument('--max_t', type=float, default=3., help='max time')
 opt = parser.parse_args()
 if opt.test_mode: opt.batch_size = 1
 
-description = 'ai-data-03'
+description = 'cost-map-02'
 log_path = 'result/log/'+opt.dataset_name+'/'
 os.makedirs('result/saved_models/%s' % opt.dataset_name, exist_ok=True)
 os.makedirs('result/output/%s' % opt.dataset_name, exist_ok=True)
@@ -162,7 +162,7 @@ def eval_error(total_step):
         
         theta_a = torch.atan2(ay, ax)
         theta_v = torch.atan2(vy, vx)
-        sign = torch.sign(torch.cos(theta_a-theta_v))
+        sign = torch.sign(torch.cos(theta_a-theta_v)).detach()
         a = torch.mul(torch.norm(output_axy, dim=1), sign.flatten()).unsqueeze(1)
     
         gen = output.data.cpu().numpy()[0]
@@ -254,7 +254,7 @@ for i, batch in enumerate(train_loader):
     
     theta_a = torch.atan2(ay, ax)
     theta_v = torch.atan2(vy, vx)
-    sign = torch.sign(torch.cos(theta_a-theta_v))
+    sign = torch.sign(torch.cos(theta_a-theta_v)).detach()
     a = torch.mul(torch.norm(output_axy, dim=1), sign.flatten()).unsqueeze(1)
 
     optimizer.zero_grad()

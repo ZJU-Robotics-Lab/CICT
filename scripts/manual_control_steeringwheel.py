@@ -147,7 +147,7 @@ class World(object):
 # -- data collect --------------------------------------------------------------------
 # ==============================================================================
 def save_data(index):
-    global global_img, global_pcd, global_nav, global_control, global_pos, global_vel
+    global global_img, global_pcd, global_nav, global_control, global_pos, global_vel, global_acceleration, global_angular_velocity
     cv2.imwrite(save_path+'img/'+str(index)+'.png', global_img)
     cv2.imwrite(save_path+'nav/'+str(index)+'.png', global_nav)
     np.save(save_path+'pcd/'+str(index)+'.npy', global_pcd)
@@ -166,6 +166,14 @@ def save_data(index):
                    str(global_vel.x)+'\t'+
                    str(global_vel.y)+'\t'+
                    str(global_vel.z)+'\t'+'\n')
+    acc_file.write(index+'\t'+
+                   str(global_acceleration.x)+'\t'+
+                   str(global_acceleration.y)+'\t'+
+                   str(global_acceleration.z)+'\t'+'\n')
+    angular_vel_file.write(index+'\t'+
+                   str(global_angular_velocity.x)+'\t'+
+                   str(global_angular_velocity.y)+'\t'+
+                   str(global_angular_velocity.z)+'\t'+'\n')
 
 def image_callback(data):
     global global_img
@@ -218,7 +226,7 @@ if __name__ == '__main__':
         metavar='WIDTHxHEIGHT',
         default='1920x1080',
         help='window resolution (default: 1920x1080)')
-    argparser.add_argument('-d', '--data', type=int, default=31, help='data index')
+    argparser.add_argument('-d', '--data', type=int, default=10, help='data index')
     args = argparser.parse_args()
 
     args.width, args.height = [int(x) for x in args.res.split('x')]
@@ -238,6 +246,8 @@ if __name__ == '__main__':
     cmd_file = open(save_path+'cmd/cmd.txt', 'w+')
     pos_file = open(save_path+'state/pos.txt', 'w+')
     vel_file = open(save_path+'state/vel.txt', 'w+')
+    acc_file = open(save_path+'state/acc.txt', 'w+')
+    angular_vel_file = open(save_path+'state/angular_vel.txt', 'w+')
     world = None
     try:
         pygame.init()
@@ -255,7 +265,7 @@ if __name__ == '__main__':
         world = World(_world, hud)
         
         weather = carla.WeatherParameters(
-            cloudiness=random.randint(0,50),
+            cloudiness=random.randint(0,80),
             precipitation=0,
             sun_altitude_angle=random.randint(40,90)
         )
@@ -282,6 +292,10 @@ if __name__ == '__main__':
             clock.tick_busy_loop(60)
             if controller.parse_events(world, clock):
                 break
+            if vehicle.is_at_traffic_light():
+                traffic_light = vehicle.get_traffic_light()
+                if traffic_light.get_state() == carla.TrafficLightState.Red:
+                    traffic_light.set_state(carla.TrafficLightState.Green)
             
             nav = get_nav(vehicle, plan_map)
             big_nav = get_big_nav(vehicle, plan_map)
@@ -289,6 +303,9 @@ if __name__ == '__main__':
             global_pos = vehicle.get_transform()
             global_vel = vehicle.get_velocity()
             global_control = controller._control
+            global_acceleration = vehicle.get_acceleration()
+            global_angular_velocity = vehicle.get_angular_velocity()
+        
             cv2.imshow('Vision', big_nav)
             cv2.waitKey(10)
             index = str(time.time())

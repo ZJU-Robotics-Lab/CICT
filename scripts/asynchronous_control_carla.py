@@ -66,7 +66,7 @@ generator = GeneratorUNet()
 generator = generator.to(device)
 generator.load_state_dict(torch.load('../ckpt/sim-obs/g.pth'))
 model = Model_COS().to(device)
-model.load_state_dict(torch.load('../ckpt/ai-data/model_810000.pth'))
+model.load_state_dict(torch.load('../ckpt/ai-data/model_200000.pth'))
 generator.eval()
 model.eval()
 
@@ -110,6 +110,38 @@ sensor_master = CarlaSensorMaster(sensor, sensor_dict['camera']['transform'], bi
 inverse_perspective_mapping = InversePerspectiveMapping(param, sensor_master)
 
 def get_cost_map(img, point_cloud):
+    img2 = np.zeros((args.height, args.width), np.uint8)
+    img2.fill(255)
+    
+    pixs_per_meter = args.height/longitudinal_length
+    u = (args.height-point_cloud[0]*pixs_per_meter).astype(int)
+    v = (-point_cloud[1]*pixs_per_meter+args.width//2).astype(int)
+    
+    mask = np.where((u >= 0)&(u < args.height))[0]
+    u = u[mask]
+    v = v[mask]
+    
+    mask = np.where((v >= 0)&(v < args.width))[0]
+    u = u[mask]
+    v = v[mask]
+
+    img2[u,v] = 0
+    kernel = np.ones((17,17),np.uint8)  
+    img2 = cv2.erode(img2,kernel,iterations = 1)
+    
+    kernel_size = (3, 3)
+    img = cv2.dilate(img,kernel_size,iterations = 3)
+    
+    img = cv2.addWeighted(img,0.5,img2,0.5,0)
+    
+    mask = np.where((img2 < 50))
+    u = mask[0]
+    v = mask[1]
+    img[u, v] = 0
+
+    return img
+
+def get_cost_map2(img, point_cloud):
     img2 = np.zeros((args.height, args.width), np.uint8)
     img2.fill(255)
     
@@ -246,8 +278,16 @@ def get_traj(cost_map, plan_time):
     
     ax = grad(vx.sum(), t, create_graph=True)[0][:,0]/args.max_t
     ay = grad(vy.sum(), t, create_graph=True)[0][:,0]/args.max_t
+
+    output_axy = torch.cat([ax.unsqueeze(1), ay.unsqueeze(1)], dim=1)
+
     x = output[:,0]*args.max_dist
     y = output[:,1]*args.max_dist
+    
+    theta_a = torch.atan2(ay, ax)
+    theta_v = torch.atan2(vy, vx)
+    sign = torch.sign(torch.cos(theta_a-theta_v))
+    a = torch.mul(torch.norm(output_axy, dim=1), sign.flatten()).unsqueeze(1)
     
     # draw
     draw_cost_map = draw_traj(cost_map, output)
@@ -258,7 +298,8 @@ def get_traj(cost_map, plan_time):
     y = y.data.cpu().numpy()
     ax = ax.data.cpu().numpy()
     ay = ay.data.cpu().numpy()
-    trajectory = {'time':plan_time, 'x':x, 'y':y, 'vx':vx, 'vy':vy, 'ax':ax, 'ay':ay}
+    a = a.data.cpu().numpy()
+    trajectory = {'time':plan_time, 'x':x, 'y':y, 'vx':vx, 'vy':vy, 'ax':ax, 'ay':ay, 'a':a}
     return trajectory
 
 def make_plan():
@@ -382,15 +423,17 @@ def show_traj():
         plt.legend(loc='lower right')
         
         t = x[-1]*np.arange(0, 1.0, 1./x.shape[0])
+        a = trajectory['a']
         vx = trajectory['vx']
         vy = trajectory['vy']
         v = np.sqrt(np.power(vx, 2), np.power(vy, 2))
         angle = np.arctan2(vy, vx)/np.pi*max_speed
         ax2 = ax1.twinx()
         ax2.plot(t, v, label='speed', color = 'r', linewidth=2)
+        ax2.plot(t, a, label='acc', color = 'y', linewidth=2)
         ax2.plot(t, angle, label='angle', color = 'g', linewidth=2)
         ax2.set_ylabel('Velocity/(m/s)')
-        ax2.set_ylim([-12.0, 12.0])
+        ax2.set_ylim([-max_speed, max_speed])
         plt.legend(loc='upper right')
         plt.show()
     

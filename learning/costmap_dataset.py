@@ -85,7 +85,7 @@ class CostMapDataset(Dataset):
         self.acc_dict[index] = ts_dict
     
     def read_img(self, index):
-        files = glob.glob(self.dataset_path+str(index)+'/ipm2/*.png')
+        files = glob.glob(self.dataset_path+str(index)+'/ipm/*.png')
         file_names = []
         for file in files:
             file_name = file.split('/')[-1][:-4]
@@ -106,7 +106,7 @@ class CostMapDataset(Dataset):
         data_index = random.sample(self.data_index, 1)[0]
         while True:
             file_name = random.sample(self.files_dict[data_index][:-120], 1)[0]
-            image_path = self.dataset_path + str(data_index)+'/ipm2/'+file_name+'.png'
+            image_path = self.dataset_path + str(data_index)+'/ipm/'+file_name+'.png'
             img = Image.open(image_path).convert('L')
             img = self.transform(img)
             
@@ -119,7 +119,7 @@ class CostMapDataset(Dataset):
             ts_list = []
             x_list = []
             y_list = []
-            for i in range(ts_index+1, len(self.files_dict[data_index])-100):
+            for i in range(ts_index, len(self.files_dict[data_index])-100):
                 ts = self.files_dict[data_index][i]
                 #_x_t = self.pose_dict[data_index][ts][0]
                 #_y_t = self.pose_dict[data_index][ts][1]
@@ -137,9 +137,10 @@ class CostMapDataset(Dataset):
                 continue
             else:
                 #ts = random.sample(ts_list, 1)[0]
-                weights = [np.exp(-float(ts)) for ts in ts_list]
-                ts = random.choices(ts_list, weights)[0]
+                weights = [np.exp(-0.23*float(ts)) for ts in ts_list]
+                sample_ts = random.choices(ts_list, weights)[0]
                 break
+        ts = sample_ts
         # [0 ~ 1]
         t = torch.FloatTensor([float(ts)/self.max_t - float(file_name)/self.max_t])
         # v0
@@ -168,8 +169,8 @@ class CostMapDataset(Dataset):
         ax = _ax*np.cos(yaw) + _ay*np.sin(yaw)
         ay = _ay*np.cos(yaw) - _ax*np.sin(yaw)
         
-        theta_a = np.arctan2(ay, ax)
-        theta_v = np.arctan2(vy, vx)
+        theta_a = np.arctan2(_ay, _ax)
+        theta_v = np.arctan2(_vy, _vx)
         sign = np.sign(np.cos(theta_a-theta_v))
         a = sign*np.sqrt(ax*ax + ay*ay)
         a = torch.FloatTensor([a])
