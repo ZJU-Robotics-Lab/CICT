@@ -2,6 +2,8 @@
 # -*- coding: utf-8 -*-
 import time
 import numpy as np
+import cv2
+from PIL import Image
 
 class Singleton(object):
     _instance = None
@@ -40,3 +42,19 @@ def write_params(log_path, parser, description=None):
             if option.dest != 'help':
                 file.write('|**'+ option.dest+'**|'+str(opt.__dict__[option.dest])+'|'+option.help+'|\n')
         file.write('********************************\n\n')
+        
+def fig2data(fig):
+    # draw the renderer
+    fig.canvas.draw()
+ 
+    # Get the RGBA buffer from the figure
+    w, h = fig.canvas.get_width_height()
+    buf = np.frombuffer(fig.canvas.tostring_argb(), dtype=np.uint8)
+    buf.shape = (w, h, 4)
+ 
+    # canvas.tostring_argb give pixmap in ARGB mode. Roll the ALPHA channel to have it in RGBA mode
+    buf = np.roll(buf, 3, axis=2)
+    image = Image.frombytes("RGBA", (w, h), buf.tobytes())
+    image = np.asarray(image)
+    image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    return image

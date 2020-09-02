@@ -20,8 +20,10 @@ class CostMapDataset(Dataset):
     def __init__(self, data_index, opt, dataset_path='/media/wang/DATASET/CARLA/town01/', evalmode=False):
         self.evalmode = evalmode
         self.data_index = data_index
+        self.weights = []
         self.max_dist = opt.max_dist
         self.max_t = opt.max_t
+        self.img_step = opt.img_step
         transforms_ = [ transforms.Resize((200, 400), Image.BICUBIC),
             transforms.ToTensor(),
             transforms.Normalize((0.5), (0.5)),
@@ -34,12 +36,15 @@ class CostMapDataset(Dataset):
         self.acc_dict = {}
         self.files_dict = {}
         self.total_len = 0
+        self.eval_index = None # eval mode
+        self.eval_cnt = 0 # eval mode
         
         for index in self.data_index:
             self.read_pose(index)
             self.read_vel(index)
             self.read_acc(index)
             self.read_img(index)
+            self.weights.append(len(self.files_dict[index]))
         
     def read_pose(self, index):
         file_path = self.dataset_path+str(index)+'/state/pos.txt'
@@ -103,43 +108,80 @@ class CostMapDataset(Dataset):
         return x, y
         
     def __getitem__(self, index):
-        data_index = random.sample(self.data_index, 1)[0]
         while True:
-            file_name = random.sample(self.files_dict[data_index][:-120], 1)[0]
-            image_path = self.dataset_path + str(data_index)+'/ipm/'+file_name+'.png'
-            img = Image.open(image_path).convert('L')
-            img = self.transform(img)
-            
+            if self.evalmode:
+                if self.eval_index == None:
+                    self.eval_index = random.sample(self.data_index,1)[0]
+                    self.cnt = 300
+                data_index = self.eval_index
+                file_name = self.files_dict[data_index][self.cnt]
+                self.cnt += 20
+                if self.cnt > len(self.files_dict[data_index])-50:
+                    self.eval_index = random.sample(self.data_index,1)[0]
+                    self.cnt = 300
+            else:
+                data_index = random.choices(self.data_index, self.weights)[0]
+                file_name = random.sample(self.files_dict[data_index][300:-120], 1)[0]
+            ts_index = self.files_dict[data_index].index(file_name)
+            imgs = []
+            try:
+                for i in range(-9,1):
+                    _file_name = self.files_dict[data_index][ts_index + self.img_step*i]
+                    image_path = self.dataset_path + str(data_index)+'/ipm/'+_file_name+'.png'
+                    img = Image.open(image_path).convert('L')
+                    img = self.transform(img)
+                    imgs.append(img)
+            except:
+                print('get img error:', image_path)
+                continue
+            imgs = torch.stack(imgs)
             x_0 = self.pose_dict[data_index][file_name][0]
             y_0 = self.pose_dict[data_index][file_name][1]
             yaw = np.deg2rad(self.pose_dict[data_index][file_name][3])
             
-            self.files_dict[data_index].sort()
-            ts_index = self.files_dict[data_index].index(file_name)
             ts_list = []
+            relative_t_list = []
             x_list = []
             y_list = []
+            vx_list = []
+            vy_list = []
+            a_list = []
             for i in range(ts_index, len(self.files_dict[data_index])-100):
                 ts = self.files_dict[data_index][i]
-                #_x_t = self.pose_dict[data_index][ts][0]
-                #_y_t = self.pose_dict[data_index][ts][1]
-                #distance = np.sqrt((x_0-_x_t)**2+(y_0-_y_t)**2)
-                #if distance > self.max_dist or (float(ts)-float(file_name) > self.max_t):
                 if float(ts)-float(file_name) > self.max_t:
                     break
                 else:
                     x_, y_ = self.tf_pose(data_index, ts, yaw, x_0, y_0)
                     x_list.append(x_)
                     y_list.append(y_)
+                    vx_ = self.vel_dict[data_index][ts][0]
+                    vy_ = self.vel_dict[data_index][ts][1]
+                    vx = np.cos(yaw)*vx_ + np.sin(yaw)*vy_
+                    vy = np.cos(yaw)*vy_ - np.sin(yaw)*vx_
+                    
+                    ax_ = self.acc_dict[data_index][ts][0]
+                    ay_ = self.acc_dict[data_index][ts][1]
+                    ax = ax_*np.cos(yaw) + ay_*np.sin(yaw)
+                    ay = ay_*np.cos(yaw) - ax_*np.sin(yaw)
+                    theta_a = np.arctan2(ay, ax)
+                    theta_v = np.arctan2(vy, vx)
+                    sign = np.sign(np.cos(theta_a-theta_v))
+                    a = sign*np.sqrt(ax*ax + ay*ay)
+                    a_list.append(a)
+                    vx_list.append(vx)
+                    vy_list.append(vy)
                     ts_list.append(ts)
+                    relative_t_list.append(float(ts)-float(file_name))
                         
             if len(ts_list) == 0:
                 continue
             else:
                 #ts = random.sample(ts_list, 1)[0]
-                weights = [np.exp(-0.23*float(ts)) for ts in ts_list]
+                weights = [np.exp(-0.23*(float(ts)-float(file_name))) for ts in ts_list]
                 sample_ts = random.choices(ts_list, weights)[0]
+                #print(weights/sum(weights))
                 break
+            
         ts = sample_ts
         # [0 ~ 1]
         t = torch.FloatTensor([float(ts)/self.max_t - float(file_name)/self.max_t])
@@ -179,10 +221,18 @@ class CostMapDataset(Dataset):
         axy = torch.FloatTensor([ax, ay])
         x_list = torch.FloatTensor(x_list)
         y_list = torch.FloatTensor(y_list)
+        vx_list = torch.FloatTensor(vx_list)
+        vy_list = torch.FloatTensor(vy_list)
+        a_list = torch.FloatTensor(a_list)
+        relative_t_list = torch.FloatTensor(relative_t_list)
         if self.evalmode:
-            return {'img': img, 't': t, 'xy':xy, 'vxy':vxy, 'axy':axy, 'a':a, 'v_0':v_0, 'yaw_t': yaw_t, 'x_list':x_list, 'y_list':y_list}
+            return {'img': imgs, 't': t, 'xy':xy, 'vxy':vxy, 'axy':axy, 'a':a, 'v_0':v_0,
+                    'yaw_t': yaw_t,'a_list':a_list,
+                    'x_list':x_list, 'y_list':y_list,
+                    'vx_list':vx_list, 'vy_list':vy_list,
+                    'ts_list':relative_t_list}
         else:
-            return {'img': img, 't': t, 'xy':xy, 'vxy':vxy, 'axy':axy, 'a':a, 'v_0':v_0}
+            return {'img': imgs, 't': t, 'xy':xy, 'vxy':vxy, 'axy':axy, 'a':a, 'v_0':v_0}
 
     def __len__(self):
         return 100000000000

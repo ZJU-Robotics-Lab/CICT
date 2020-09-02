@@ -2,7 +2,8 @@
 # -*- coding: utf-8 -*-
 import sys
 from os.path import join, dirname
-sys.path.insert(0, join(dirname(__file__), '..'))
+sys.path.insert(0, join(dirname(__file__), '../../'))
+sys.path.insert(0, join(dirname(__file__), '../'))
 
 import simulator
 simulator.load('/home/wang/CARLA_0.9.9.4')
@@ -14,7 +15,7 @@ from simulator import config, set_weather, add_vehicle
 from simulator.sensor_manager import SensorManager
 from utils.navigator_sim import get_map, get_nav, replan, close2dest
 from learning.models import GeneratorUNet
-from learning.path_model import Model_COS
+from learning.path_model import Model_COS, ModelGRU
 
 from ff_collect_pm_data import sensor_dict
 from ff.collect_ipm import InversePerspectiveMapping
@@ -51,6 +52,7 @@ global_cost_map = None
 global_transform = None
 max_steer_angle = 0.
 draw_cost_map = None
+global_cost_map_trans_stack = []
 
 MAX_SPEED = 30
 img_height = 128
@@ -64,9 +66,9 @@ device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 generator = GeneratorUNet()
 generator = generator.to(device)
-generator.load_state_dict(torch.load('../ckpt/sim-obs/g.pth'))
-model = Model_COS().to(device)
-model.load_state_dict(torch.load('../ckpt/ai-data/model_200000.pth'))
+generator.load_state_dict(torch.load('../../ckpt/sim-obs/g.pth'))
+model = ModelGRU().to(device)
+model.load_state_dict(torch.load('../../ckpt/gru/model_388000.pth'))
 generator.eval()
 model.eval()
 
@@ -78,7 +80,7 @@ parser.add_argument('--height', type=int, default=200, help='image height')
 parser.add_argument('--max_dist', type=float, default=25., help='max distance')
 parser.add_argument('--max_t', type=float, default=3., help='max time')
 parser.add_argument('--scale', type=float, default=25., help='longitudinal length')
-parser.add_argument('--dt', type=float, default=0.005, help='discretization minimum time interval')
+parser.add_argument('--dt', type=float, default=0.05, help='discretization minimum time interval')
 args = parser.parse_args()
 
 data_index = args.data
@@ -139,34 +141,6 @@ def get_cost_map(img, point_cloud):
     v = mask[1]
     img[u, v] = 0
 
-    return img
-
-def get_cost_map2(img, point_cloud):
-    img2 = np.zeros((args.height, args.width), np.uint8)
-    img2.fill(255)
-    
-    pixs_per_meter = args.height/longitudinal_length
-    u = (args.height-point_cloud[0]*pixs_per_meter).astype(int)
-    v = (-point_cloud[1]*pixs_per_meter+args.width//2).astype(int)
-    
-    mask = np.where((u >= 0)&(u < args.height))[0]
-    u = u[mask]
-    v = v[mask]
-    
-    mask = np.where((v >= 0)&(v < args.width))[0]
-    u = u[mask]
-    v = v[mask]
-
-    img2[u,v] = 0
-    
-    kernel = np.ones((17,17),np.uint8)  
-    img2 = cv2.erode(img2,kernel,iterations = 1)
-    
-    img = cv2.addWeighted(img,0.4,img2,0.6,0)
-    #kernel_size = (17, 17)
-    kernel_size = (9, 9)
-    sigma = 9#21
-    img = cv2.GaussianBlur(img, kernel_size, sigma);
     return img
 
 def xy2uv(x, y):
@@ -236,7 +210,7 @@ def visualize(img, costmap, nav, curve=None):
         left_img = cv2.resize(curve, (int(curve.shape[1]*show_img.shape[0]/curve.shape[0]), show_img.shape[0]), interpolation=cv2.INTER_CUBIC)
         show_img = np.hstack([show_img, left_img])
     cv2.imshow('Visualization', show_img)
-    #cv2.imwrite('result/images/dynamic02/'+str(cnt)+'.png', show_img)
+    cv2.imwrite('result/images/gru01/'+str(cnt)+'.png', show_img)
     cv2.waitKey(10)
     cnt += 1
 
@@ -254,17 +228,20 @@ def draw_traj(cost_map, output):
     return cost_map
         
 def get_traj(cost_map, plan_time):
-    global global_v0, draw_cost_map
+    global global_v0, draw_cost_map, global_cost_map_trans_stack
     img = Image.fromarray(cv2.cvtColor(cost_map,cv2.COLOR_BGR2RGB)).convert('L')
-    # for resnet backbone
-    #img = Image.fromarray(cv2.cvtColor(cost_map,cv2.COLOR_BGR2RGB)).convert('RGB')
     trans_img = cost_map_trans(img)
+    while len(global_cost_map_trans_stack) < 10:
+        global_cost_map_trans_stack.append(trans_img)
+    global_cost_map_trans_stack.pop(0)
+    global_cost_map_trans_stack.append(trans_img)
     
     #t = torch.arange(0, 0.99, args.dt).unsqueeze(1).to(device)
     t = torch.arange(0, 0.99, args.dt).unsqueeze(1).to(device)
     t.requires_grad = True
     
-    img = trans_img.expand(len(t),1,args.height, args.width)
+    trans_img = torch.stack(global_cost_map_trans_stack)
+    img = trans_img.expand(len(t),10,1,args.height, args.width)
     # for resnet backbone
     #img = trans_img.expand(len(t),3,args.height, args.width)
     img = img.to(device)
@@ -316,6 +293,7 @@ def make_plan():
         
         ipm_image = inverse_perspective_mapping.getIPM(result)
         cost_map = get_cost_map(ipm_image, global_pcd)
+
         # 3. get trajectory
         trajectory = get_traj(cost_map, plan_time)
         #time.sleep(0.2)
@@ -562,7 +540,7 @@ def main():
         vehicle.apply_control(control)
         
         #print(global_vel*np.tan(control.steer)/w)
-        curve = None#show_traj(True)
+        curve = None#show_traj()
         visualize(global_img, draw_cost_map, global_nav, curve)
         
         #time.sleep(1/60.)
