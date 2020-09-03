@@ -37,7 +37,7 @@ device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--test_mode', type=bool, default=False, help='test model switch')
-parser.add_argument('--dataset_name', type=str, default="gru-02", help='name of the dataset')
+parser.add_argument('--dataset_name', type=str, default="gru-03", help='name of the dataset')
 parser.add_argument('--width', type=int, default=400, help='image width')
 parser.add_argument('--height', type=int, default=200, help='image height')
 parser.add_argument('--scale', type=float, default=25., help='longitudinal length')
@@ -55,7 +55,7 @@ parser.add_argument('--max_t', type=float, default=3., help='max time')
 opt = parser.parse_args()
 if opt.test_mode: opt.batch_size = 1
     
-description = 'gru-02, fix bugs'
+description = 'gru-03, fix bugs'
 log_path = 'result/log/'+opt.dataset_name+'/'
 os.makedirs('result/saved_models/%s' % opt.dataset_name, exist_ok=True)
 os.makedirs('result/output/%s' % opt.dataset_name, exist_ok=True)
@@ -66,6 +66,7 @@ if not opt.test_mode:
     
 model = ModelGRU(256).to(device)
 #model.load_state_dict(torch.load('result/saved_models/gru-01/model_388000.pth'))
+model.load_state_dict(torch.load('../../ckpt/gru/model_288000.pth'))
 train_loader = DataLoader(CostMapDataset(data_index=[1,2,3,4,5,6,7,9,10], opt=opt, dataset_path='/media/wang/DATASET/CARLA_HUMAN/town01/'), batch_size=opt.batch_size, shuffle=False, num_workers=opt.n_cpu)
 
 eval_loader = DataLoader(CostMapDataset(data_index=[8], opt=opt, dataset_path='/media/wang/DATASET/CARLA_HUMAN/town01/', evalmode=True), batch_size=1, shuffle=False, num_workers=1)

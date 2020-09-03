@@ -16,6 +16,7 @@ from simulator.sensor_manager import SensorManager
 from utils.navigator_sim import get_map, get_nav, replan, close2dest
 from learning.models import GeneratorUNet
 from learning.path_model import Model_COS, ModelGRU
+from utils import fig2data, add_alpha_channel
 
 from ff_collect_pm_data import sensor_dict
 from ff.collect_ipm import InversePerspectiveMapping
@@ -52,7 +53,11 @@ global_cost_map = None
 global_transform = None
 max_steer_angle = 0.
 draw_cost_map = None
-global_cost_map_trans_stack = []
+global_ipm_image = np.zeros((200,400), dtype=np.uint8)
+global_ipm_image.fill(255)
+
+global_trans_costmap_list = []
+
 
 MAX_SPEED = 30
 img_height = 128
@@ -68,7 +73,7 @@ generator = GeneratorUNet()
 generator = generator.to(device)
 generator.load_state_dict(torch.load('../../ckpt/sim-obs/g.pth'))
 model = ModelGRU().to(device)
-model.load_state_dict(torch.load('../../ckpt/gru/model_388000.pth'))
+model.load_state_dict(torch.load('../../ckpt/gru/model_288000.pth'))
 generator.eval()
 model.eval()
 
@@ -173,6 +178,8 @@ def lidar_callback(data):
     mask = np.where(point_cloud[2] > -2.3)[0]
     point_cloud = point_cloud[:, mask]
     global_pcd = point_cloud
+    generate_costmap()
+    print(time.time())
 
 def get_cGAN_result(img, nav):
     img = Image.fromarray(cv2.cvtColor(img,cv2.COLOR_BGR2RGB))
@@ -185,13 +192,6 @@ def get_cGAN_result(img, nav):
     result = cv2.resize(result, (global_img.shape[1], global_img.shape[0]), interpolation=cv2.INTER_CUBIC)
     #print(result.max(), result.min())
     return result
-
-def add_alpha_channel(img): 
-    b_channel, g_channel, r_channel = cv2.split(img)
-    alpha_channel = np.ones(b_channel.shape, dtype=b_channel.dtype) * 255
-    alpha_channel[:, :int(b_channel.shape[0] / 2)] = 100
-    img_BGRA = cv2.merge((b_channel, g_channel, r_channel, alpha_channel))
-    return img_BGRA
 
 cnt = 0
 def visualize(img, costmap, nav, curve=None):
@@ -210,7 +210,7 @@ def visualize(img, costmap, nav, curve=None):
         left_img = cv2.resize(curve, (int(curve.shape[1]*show_img.shape[0]/curve.shape[0]), show_img.shape[0]), interpolation=cv2.INTER_CUBIC)
         show_img = np.hstack([show_img, left_img])
     cv2.imshow('Visualization', show_img)
-    cv2.imwrite('result/images/gru01/'+str(cnt)+'.png', show_img)
+    #cv2.imwrite('result/images/gru01/'+str(cnt)+'.png', show_img)
     cv2.waitKey(10)
     cnt += 1
 
@@ -227,20 +227,13 @@ def draw_traj(cost_map, output):
         draw.line((v[i]-1, u[i], v[i+1]-1, u[i+1]), 'red')
     return cost_map
         
-def get_traj(cost_map, plan_time):
-    global global_v0, draw_cost_map, global_cost_map_trans_stack
-    img = Image.fromarray(cv2.cvtColor(cost_map,cv2.COLOR_BGR2RGB)).convert('L')
-    trans_img = cost_map_trans(img)
-    while len(global_cost_map_trans_stack) < 10:
-        global_cost_map_trans_stack.append(trans_img)
-    global_cost_map_trans_stack.pop(0)
-    global_cost_map_trans_stack.append(trans_img)
-    
-    #t = torch.arange(0, 0.99, args.dt).unsqueeze(1).to(device)
+def get_traj(plan_time):
+    global global_v0, draw_cost_map, global_trans_costmap_list
+
     t = torch.arange(0, 0.99, args.dt).unsqueeze(1).to(device)
     t.requires_grad = True
     
-    trans_img = torch.stack(global_cost_map_trans_stack)
+    trans_img = torch.stack(global_trans_costmap_list)
     img = trans_img.expand(len(t),10,1,args.height, args.width)
     # for resnet backbone
     #img = trans_img.expand(len(t),3,args.height, args.width)
@@ -267,7 +260,7 @@ def get_traj(cost_map, plan_time):
     a = torch.mul(torch.norm(output_axy, dim=1), sign.flatten()).unsqueeze(1)
     
     # draw
-    draw_cost_map = draw_traj(cost_map, output)
+    draw_cost_map = draw_traj(global_cost_map, output)
     
     vx = vx.data.cpu().numpy()
     vy = vy.data.cpu().numpy()
@@ -279,8 +272,19 @@ def get_traj(cost_map, plan_time):
     trajectory = {'time':plan_time, 'x':x, 'y':y, 'vx':vx, 'vy':vy, 'ax':ax, 'ay':ay, 'a':a}
     return trajectory
 
+def generate_costmap():
+    global global_pcd, global_ipm_image, global_cost_map, global_trans_costmap_list
+    cost_map = get_cost_map(global_ipm_image, global_pcd)
+    global_cost_map = cost_map
+    img = Image.fromarray(cv2.cvtColor(cost_map,cv2.COLOR_BGR2RGB)).convert('L')
+    trans_img = cost_map_trans(img)
+    while len(global_trans_costmap_list) < 10:
+        global_trans_costmap_list.append(trans_img)
+    global_trans_costmap_list.pop(0)
+    global_trans_costmap_list.append(trans_img)
+
 def make_plan():
-    global global_img, global_nav, global_pcd, global_plan_time, global_trajectory,start_control, global_cost_map
+    global global_img, global_nav, global_pcd, global_plan_time, global_trajectory,start_control, global_ipm_image
     while True:
         t1 = time.time()
         plan_time = global_plan_time
@@ -292,13 +296,12 @@ def make_plan():
         img[mask[0],mask[1]] = (255, 0, 0, 255)
         
         ipm_image = inverse_perspective_mapping.getIPM(result)
-        cost_map = get_cost_map(ipm_image, global_pcd)
+        global_ipm_image = ipm_image
 
         # 3. get trajectory
-        trajectory = get_traj(cost_map, plan_time)
+        global_trajectory = get_traj(plan_time)
         #time.sleep(0.2)
-        global_trajectory = trajectory
-        global_cost_map = cost_map
+
         if not start_control:
             start_control = True
         t2 = time.time()
@@ -323,8 +326,8 @@ def get_control(x, y, vx, vy, ax, ay):
     Kx = 0.3
     Kv = 3.0*1.5
     
-    Ky = 9.0e-3
-    K_theta = 0.05#0.005
+    Ky = 2.5e-2
+    K_theta = 0.05
     
     control = carla.VehicleControl()
     control.manual_gear_shift = True
@@ -364,22 +367,6 @@ def get_control(x, y, vx, vy, ax, ay):
         control.brake = np.clip(100*throttle, 0., 1.)
     control.steer = np.clip(steer, -1., 1.)
     return control
-
-def fig2data(fig):
-    import PIL.Image as Image
-    # draw the renderer
-    fig.canvas.draw()
- 
-    # Get the RGBA buffer from the figure
-    w, h = fig.canvas.get_width_height()
-    buf = np.frombuffer(fig.canvas.tostring_argb(), dtype=np.uint8)
-    buf.shape = (w, h, 4)
- 
-    # canvas.tostring_argb give pixmap in ARGB mode. Roll the ALPHA channel to have it in RGBA mode
-    buf = np.roll(buf, 3, axis=2)
-    image = Image.frombytes("RGBA", (w, h), buf.tobytes())
-    image = np.asarray(image)
-    return image
 
 #def show_traj(trajectory, show=False):
 def show_traj():
@@ -472,6 +459,7 @@ def main():
     # start to plan
     plan_thread = threading.Thread(target = make_plan, args=())
     visualization_thread = threading.Thread(target = show_traj, args=())
+
     while True:
         if (global_img is not None) and (global_nav is not None) and (global_pcd is not None):
             plan_thread.start()

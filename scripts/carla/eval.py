@@ -58,7 +58,7 @@ global_trajectory = None
 global_trajectory_real = None
     
 model = ModelGRU(256).to(device)
-model.load_state_dict(torch.load('result/saved_models/gru-01/model_388000.pth'))
+model.load_state_dict(torch.load('../../ckpt/gru/model_288000.pth'))
 model.eval()
 
 eval_loader = DataLoader(CostMapDataset(data_index=[1,2,3,4,5,6,7], opt=opt, dataset_path='/media/wang/DATASET/CARLA_HUMAN/town01/', evalmode=True), batch_size=1, shuffle=False, num_workers=1)
@@ -77,10 +77,8 @@ def xy2uv(x, y):
     v = v[mask]
     return u, v
 
-cnt = 0
-def show_traj():
-    global global_trajectory, global_trajectory_real, cnt
-    cnt += 1
+def show_traj(step):
+    global global_trajectory, global_trajectory_real
     max_x = 30.
     max_y = 30.
     max_speed = 12.0
@@ -129,9 +127,9 @@ def show_traj():
     plt.close('all')
     
     img = fig2data(fig)
-    cv2.imwrite('result/output/%s/' % opt.dataset_name+str(cnt)+'.png', img)
+    cv2.imwrite('result/output/%s/' % opt.dataset_name+str(step)+'_curve.png', img)
 
-def draw_traj():
+def draw_traj(step):
     if opt.test_mode: global global_trajectory, global_trajectory_real
     
     model.eval()
@@ -185,7 +183,7 @@ def draw_traj():
 
     global_trajectory = {'x':x, 'y':y, 'vx':vx, 'vy':vy, 'a':a}
     global_trajectory_real = {'x':real_x, 'y':real_y, 'vx':real_vx, 'vy':real_vy, 'ts_list':ts_list, 'a_list':a_list}
-    show_traj()
+    show_traj(step)
         
     img = Image.fromarray(img).convert("RGB")
     draw =ImageDraw.Draw(img)
@@ -209,8 +207,8 @@ def draw_traj():
         draw.line((v[i]+1, u[i], v[i+1]+1, u[i+1]), 'red')
         draw.line((v[i]-1, u[i], v[i+1]-1, u[i+1]), 'red')
     
-    #img.save(('result/output/%s/' % opt.dataset_name)+str(time.time())+'.png')
+    img.save(('result/output/%s/' % opt.dataset_name)+str(step)+'_costmap.png')
     model.train()
 
 for j in range(1000):
-    draw_traj()
+    draw_traj(j)

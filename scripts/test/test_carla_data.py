@@ -152,6 +152,14 @@ class CostMapDataset():
 if __name__ == '__main__':
     dataset = CostMapDataset()
     ts_list, x_list, y_list, vx_list, vy_list, ax_list, ay_list, a_list, angle_list = dataset.get()
+    avg_step_list = []
+    for i in range(len(ts_list)-1):
+        t2 = float(ts_list[i+1])
+        t1 = float(ts_list[i])
+        avg_step_list.append(1000*(t2-t1))
+    print(sum(avg_step_list)/len(avg_step_list))
+        
+    """
     max_x = 25.
     max_y = 25.
     max_speed = 12.0
@@ -180,4 +188,4 @@ if __name__ == '__main__':
     plt.legend(loc='upper right')
 
     plt.show()
-     
+    """
