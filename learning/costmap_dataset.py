@@ -176,13 +176,13 @@ class CostMapDataset(Dataset):
             if len(ts_list) == 0:
                 continue
             else:
-                #ts = random.sample(ts_list, 1)[0]
-                weights = [np.exp(-0.23*(float(ts)-float(file_name))) for ts in ts_list]
-                sample_ts = random.choices(ts_list, weights)[0]
+                ts = random.sample(ts_list, 1)[0]
+                #weights = [np.exp(-0.23*(float(ts)-float(file_name))) for ts in ts_list]
+                #sample_ts = random.choices(ts_list, weights)[0]
                 #print(weights/sum(weights))
                 break
             
-        ts = sample_ts
+        #ts = sample_ts
         # [0 ~ 1]
         t = torch.FloatTensor([float(ts)/self.max_t - float(file_name)/self.max_t])
         # v0

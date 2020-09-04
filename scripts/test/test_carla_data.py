@@ -150,14 +150,15 @@ class CostMapDataset():
                 
 
 if __name__ == '__main__':
-    dataset = CostMapDataset()
-    ts_list, x_list, y_list, vx_list, vy_list, ax_list, ay_list, a_list, angle_list = dataset.get()
+    dataset = CostMapDataset(data_index = [1,2,3,4,5,6,7,8,9])
     avg_step_list = []
-    for i in range(len(ts_list)-1):
-        t2 = float(ts_list[i+1])
-        t1 = float(ts_list[i])
-        avg_step_list.append(1000*(t2-t1))
-    print(sum(avg_step_list)/len(avg_step_list))
+    for _ in range(1000):
+        ts_list, x_list, y_list, vx_list, vy_list, ax_list, ay_list, a_list, angle_list = dataset.get()
+        for i in range(len(ts_list)-1):
+            t2 = float(ts_list[i+1])
+            t1 = float(ts_list[i])
+            avg_step_list.append(1000*(t2-t1))
+    print(round(sum(avg_step_list)/len(avg_step_list),2), 'ms')
         
     """
     max_x = 25.

@@ -3,6 +3,7 @@
 import sys
 from os.path import join, dirname
 sys.path.insert(0, join(dirname(__file__), '..'))
+sys.path.insert(0, join(dirname(__file__), '../../'))
 
 import simulator
 simulator.load('/home/wang/CARLA_0.9.9.4')

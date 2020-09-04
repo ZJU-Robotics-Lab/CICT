@@ -37,15 +37,15 @@ device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--test_mode', type=bool, default=False, help='test model switch')
-parser.add_argument('--dataset_name', type=str, default="gru-03", help='name of the dataset')
+parser.add_argument('--dataset_name', type=str, default="gru-04", help='name of the dataset')
 parser.add_argument('--width', type=int, default=400, help='image width')
 parser.add_argument('--height', type=int, default=200, help='image height')
 parser.add_argument('--scale', type=float, default=25., help='longitudinal length')
-parser.add_argument('--batch_size', type=int, default=32, help='size of the batches')
+parser.add_argument('--batch_size', type=int, default=48, help='size of the batches')
 parser.add_argument('--weight_decay', type=float, default=5e-4, help='adam: weight_decay')
 parser.add_argument('--lr', type=float, default=3e-4, help='adam: learning rate')
-parser.add_argument('--gamma', type=float, default=0.2, help='xy and vxy loss trade off')
-parser.add_argument('--gamma2', type=float, default=0.0, help='xy and axy loss trade off')
+parser.add_argument('--gamma', type=float, default=0.1, help='xy and vxy loss trade off')
+parser.add_argument('--gamma2', type=float, default=0.001, help='xy and axy loss trade off')
 parser.add_argument('--img_step', type=int, default=3, help='RNN input image step')
 parser.add_argument('--n_cpu', type=int, default=16, help='number of cpu threads to use during batch generation')
 parser.add_argument('--checkpoint_interval', type=int, default=2000, help='interval between model checkpoints')
@@ -65,7 +65,7 @@ if not opt.test_mode:
     write_params(log_path, parser, description)
     
 model = ModelGRU(256).to(device)
-#model.load_state_dict(torch.load('result/saved_models/gru-01/model_388000.pth'))
+#model.load_state_dict(torch.load('result/saved_models/gru-03/model_318000.pth'))
 model.load_state_dict(torch.load('../../ckpt/gru/model_288000.pth'))
 train_loader = DataLoader(CostMapDataset(data_index=[1,2,3,4,5,6,7,9,10], opt=opt, dataset_path='/media/wang/DATASET/CARLA_HUMAN/town01/'), batch_size=opt.batch_size, shuffle=False, num_workers=opt.n_cpu)
 
@@ -338,7 +338,9 @@ for i, batch in enumerate(train_loader):
     batch['a'] = batch['a'].to(device)
     batch['img'].requires_grad = True
     batch['t'].requires_grad = True
-
+    
+    batch_size, timesteps, C, H, W = batch['img'].size()
+    x = batch['img'].view(batch_size * timesteps, C, H, W)
     output = model(batch['img'], batch['t'], batch['v_0'])
     vx = grad(output[:,0].sum(), batch['t'], create_graph=True)[0]
     vy = grad(output[:,1].sum(), batch['t'], create_graph=True)[0]

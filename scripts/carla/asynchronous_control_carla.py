@@ -57,6 +57,7 @@ global_ipm_image = np.zeros((200,400), dtype=np.uint8)
 global_ipm_image.fill(255)
 
 global_trans_costmap_list = []
+global_trans_costmap_dict = {}
 
 
 MAX_SPEED = 30
@@ -73,7 +74,7 @@ generator = GeneratorUNet()
 generator = generator.to(device)
 generator.load_state_dict(torch.load('../../ckpt/sim-obs/g.pth'))
 model = ModelGRU().to(device)
-model.load_state_dict(torch.load('../../ckpt/gru/model_288000.pth'))
+#model.load_state_dict(torch.load('../../ckpt/gru/model_318000.pth'))
 generator.eval()
 model.eval()
 
@@ -86,6 +87,7 @@ parser.add_argument('--max_dist', type=float, default=25., help='max distance')
 parser.add_argument('--max_t', type=float, default=3., help='max time')
 parser.add_argument('--scale', type=float, default=25., help='longitudinal length')
 parser.add_argument('--dt', type=float, default=0.05, help='discretization minimum time interval')
+parser.add_argument('--rnn_steps', type=int, default=16, help='rnn readout steps')
 args = parser.parse_args()
 
 data_index = args.data
@@ -173,13 +175,13 @@ def image_callback(data):
     
 def lidar_callback(data):
     global global_pcd
+    ts = time.time()
     lidar_data = np.frombuffer(data.raw_data, dtype=np.float32).reshape([-1, 3])
     point_cloud = np.stack([-lidar_data[:,1], -lidar_data[:,0], -lidar_data[:,2]])
     mask = np.where(point_cloud[2] > -2.3)[0]
     point_cloud = point_cloud[:, mask]
     global_pcd = point_cloud
-    generate_costmap()
-    print(time.time())
+    generate_costmap(ts)
 
 def get_cGAN_result(img, nav):
     img = Image.fromarray(cv2.cvtColor(img,cv2.COLOR_BGR2RGB))
@@ -226,15 +228,42 @@ def draw_traj(cost_map, output):
         draw.line((v[i]+1, u[i], v[i+1]+1, u[i+1]), 'red')
         draw.line((v[i]-1, u[i], v[i+1]-1, u[i+1]), 'red')
     return cost_map
+
+def find_nn_ts(ts_list, t):
+    if len(ts_list) == 1: return ts_list[0]
+    if t <= ts_list[0]: return ts_list[0]
+    if t >= ts_list[-1]: return ts_list[-1]
+    for i in range(len(ts_list)-1):
+        if ts_list[i] < t and t < ts_list[i+1]:
+            return ts_list[i] if t-ts_list[i] < ts_list[i+1]-t else ts_list[i+1]
+    print('Error in find_nn_ts')
+    return ts_list[-1]
+
+def get_costmap_stack():
+    global global_trans_costmap_dict
+    ts_list = [ ts for ts in list(global_trans_costmap_dict.keys())]
+    ts_list.sort()
+    t0 = max(ts_list)
+    trans_costmap_stack = []
+    for i in range(-9,1):
+        ts = find_nn_ts(ts_list, t0 - 0.0375*3*i)
+        trans_costmap = global_trans_costmap_dict[ts]
+        trans_costmap_stack.append(trans_costmap)
+    for ts in ts_list:
+        if t0 - ts > 5:
+            del global_trans_costmap_dict[ts]
+    return trans_costmap_stack
         
+    
 def get_traj(plan_time):
-    global global_v0, draw_cost_map, global_trans_costmap_list
+    global global_v0, draw_cost_map, global_trans_costmap_dict
 
     t = torch.arange(0, 0.99, args.dt).unsqueeze(1).to(device)
     t.requires_grad = True
-    
-    trans_img = torch.stack(global_trans_costmap_list)
-    img = trans_img.expand(len(t),10,1,args.height, args.width)
+
+    trans_costmap_stack = get_costmap_stack()
+    trans_img = torch.stack(trans_costmap_stack)
+    img = trans_img.expand(len(t),trans_img.shape[0],1,args.height, args.width)
     # for resnet backbone
     #img = trans_img.expand(len(t),3,args.height, args.width)
     img = img.to(device)
@@ -272,16 +301,18 @@ def get_traj(plan_time):
     trajectory = {'time':plan_time, 'x':x, 'y':y, 'vx':vx, 'vy':vy, 'ax':ax, 'ay':ay, 'a':a}
     return trajectory
 
-def generate_costmap():
-    global global_pcd, global_ipm_image, global_cost_map, global_trans_costmap_list
+def generate_costmap(ts):
+    global global_pcd, global_ipm_image, global_cost_map, global_trans_costmap_dict
     cost_map = get_cost_map(global_ipm_image, global_pcd)
     global_cost_map = cost_map
     img = Image.fromarray(cv2.cvtColor(cost_map,cv2.COLOR_BGR2RGB)).convert('L')
     trans_img = cost_map_trans(img)
-    while len(global_trans_costmap_list) < 10:
-        global_trans_costmap_list.append(trans_img)
-    global_trans_costmap_list.pop(0)
-    global_trans_costmap_list.append(trans_img)
+    #while len(global_trans_costmap_list) < args.rnn_steps:
+    #    global_trans_costmap_list.append(trans_img)
+        
+    global_trans_costmap_dict[ts] = trans_img
+    #global_trans_costmap_list.pop(0)
+    #global_trans_costmap_list.append(trans_img)
 
 def make_plan():
     global global_img, global_nav, global_pcd, global_plan_time, global_trajectory,start_control, global_ipm_image
@@ -305,7 +336,7 @@ def make_plan():
         if not start_control:
             start_control = True
         t2 = time.time()
-        print('time:', 1000*(t2-t1))
+        #print('time:', 1000*(t2-t1))
             
 
 def get_transform(transform, org_transform):
@@ -326,8 +357,8 @@ def get_control(x, y, vx, vy, ax, ay):
     Kx = 0.3
     Kv = 3.0*1.5
     
-    Ky = 2.5e-2
-    K_theta = 0.05
+    Ky = 1.5e-2
+    K_theta = 0.09
     
     control = carla.VehicleControl()
     control.manual_gear_shift = True
@@ -364,11 +395,10 @@ def get_control(x, y, vx, vy, ax, ay):
         control.throttle = np.clip(throttle, 0., 1.)
     else:
         #control.brake = np.clip(-0.05*throttle, 0., 1.)
-        control.brake = np.clip(100*throttle, 0., 1.)
+        control.brake = np.clip(abs(100*throttle), 0., 1.)
     control.steer = np.clip(steer, -1., 1.)
     return control
 
-#def show_traj(trajectory, show=False):
 def show_traj():
     global global_trajectory
     max_x = 30.
