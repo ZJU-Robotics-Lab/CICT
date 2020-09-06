@@ -15,12 +15,7 @@ def weights_init(m):
     if isinstance(m, nn.Linear):
         nn.init.kaiming_uniform_(m.weight, a=0, mode='fan_in', nonlinearity='leaky_relu')
         nn.init.constant_(m.bias, 0.01)
-
-import torch
-import torch.nn as nn
-from torch.nn import init
-import torch.nn.functional as F
-
+        
 class BasicConv(nn.Module):
     def __init__(self, in_planes, out_planes, kernel_size, stride=1, padding=0, dilation=1, groups=1, relu=True, bn=True, bias=False):
         super(BasicConv, self).__init__()
@@ -225,7 +220,7 @@ class ModelGRU(nn.Module):
             hidden_size = self.rnn_hidden_dim, 
             num_layers = 2,
             batch_first=True,
-            dropout=0.2)
+            dropout=0.0)
         self.mlp = MLP_COS(input_dim=self.rnn_hidden_dim+2)
 
     def forward(self, x, t, v0):

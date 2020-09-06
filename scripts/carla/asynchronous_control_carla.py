@@ -74,7 +74,7 @@ generator = GeneratorUNet()
 generator = generator.to(device)
 generator.load_state_dict(torch.load('../../ckpt/sim-obs/g.pth'))
 model = ModelGRU().to(device)
-#model.load_state_dict(torch.load('../../ckpt/gru/model_318000.pth'))
+model.load_state_dict(torch.load('../../ckpt/gru/model_214000.pth'))
 generator.eval()
 model.eval()
 
@@ -86,8 +86,8 @@ parser.add_argument('--height', type=int, default=200, help='image height')
 parser.add_argument('--max_dist', type=float, default=25., help='max distance')
 parser.add_argument('--max_t', type=float, default=3., help='max time')
 parser.add_argument('--scale', type=float, default=25., help='longitudinal length')
-parser.add_argument('--dt', type=float, default=0.05, help='discretization minimum time interval')
-parser.add_argument('--rnn_steps', type=int, default=16, help='rnn readout steps')
+parser.add_argument('--dt', type=float, default=0.03, help='discretization minimum time interval')
+parser.add_argument('--rnn_steps', type=int, default=10, help='rnn readout steps')
 args = parser.parse_args()
 
 data_index = args.data
@@ -212,7 +212,7 @@ def visualize(img, costmap, nav, curve=None):
         left_img = cv2.resize(curve, (int(curve.shape[1]*show_img.shape[0]/curve.shape[0]), show_img.shape[0]), interpolation=cv2.INTER_CUBIC)
         show_img = np.hstack([show_img, left_img])
     cv2.imshow('Visualization', show_img)
-    #cv2.imwrite('result/images/gru01/'+str(cnt)+'.png', show_img)
+    cv2.imwrite('result/images/gru04/'+str(cnt)+'.png', show_img)
     cv2.waitKey(10)
     cnt += 1
 
@@ -245,10 +245,13 @@ def get_costmap_stack():
     ts_list.sort()
     t0 = max(ts_list)
     trans_costmap_stack = []
-    for i in range(-9,1):
-        ts = find_nn_ts(ts_list, t0 - 0.0375*3*i)
+    use_ts_list = []
+    for i in range(-10,1):
+        ts = find_nn_ts(ts_list, t0 + 0.0375*3*i)
         trans_costmap = global_trans_costmap_dict[ts]
         trans_costmap_stack.append(trans_costmap)
+        use_ts_list.append(t0-ts)
+    #print(use_ts_list)
     for ts in ts_list:
         if t0 - ts > 5:
             del global_trans_costmap_dict[ts]
@@ -256,7 +259,7 @@ def get_costmap_stack():
         
     
 def get_traj(plan_time):
-    global global_v0, draw_cost_map, global_trans_costmap_dict
+    global global_v0, draw_cost_map
 
     t = torch.arange(0, 0.99, args.dt).unsqueeze(1).to(device)
     t.requires_grad = True
@@ -330,8 +333,8 @@ def make_plan():
         global_ipm_image = ipm_image
 
         # 3. get trajectory
+        #time.sleep(0.3)
         global_trajectory = get_traj(plan_time)
-        #time.sleep(0.2)
 
         if not start_control:
             start_control = True
@@ -358,7 +361,7 @@ def get_control(x, y, vx, vy, ax, ay):
     Kv = 3.0*1.5
     
     Ky = 1.5e-2
-    K_theta = 0.09
+    K_theta = 0.05
     
     control = carla.VehicleControl()
     control.manual_gear_shift = True
@@ -381,7 +384,7 @@ def get_control(x, y, vx, vy, ax, ay):
     #v = v_r*np.cos(theta_e) + Kx*x_eglobal global_trajectory
     w = w_r + v_r*(Ky*y_e + K_theta*np.sin(theta_e))
     
-    steer_angle = np.arctan(w*2.405/global_vel)
+    steer_angle = np.arctan(w*2.405/global_vel) if abs(global_vel) > 0.001 else 0.
     steer = steer_angle/max_steer_angle
     #####################################
     
@@ -501,7 +504,7 @@ def main():
     while not start_control:
         time.sleep(0.001)
     
-    visualization_thread.start()
+    #visualization_thread.start()
     # start to control
     print('Start to control')
     avg_dt = 1.0
@@ -558,6 +561,7 @@ def main():
         vehicle.apply_control(control)
         
         #print(global_vel*np.tan(control.steer)/w)
+        
         curve = None#show_traj()
         visualize(global_img, draw_cost_map, global_nav, curve)
         

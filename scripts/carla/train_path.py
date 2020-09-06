@@ -66,7 +66,7 @@ if not opt.test_mode:
     
 model = ModelGRU(256).to(device)
 #model.load_state_dict(torch.load('result/saved_models/gru-03/model_318000.pth'))
-model.load_state_dict(torch.load('../../ckpt/gru/model_288000.pth'))
+model.load_state_dict(torch.load('../../ckpt/gru/model_232000.pth'))
 train_loader = DataLoader(CostMapDataset(data_index=[1,2,3,4,5,6,7,9,10], opt=opt, dataset_path='/media/wang/DATASET/CARLA_HUMAN/town01/'), batch_size=opt.batch_size, shuffle=False, num_workers=opt.n_cpu)
 
 eval_loader = DataLoader(CostMapDataset(data_index=[8], opt=opt, dataset_path='/media/wang/DATASET/CARLA_HUMAN/town01/', evalmode=True), batch_size=1, shuffle=False, num_workers=1)
