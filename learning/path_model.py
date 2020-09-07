@@ -3,7 +3,6 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from siren_pytorch import SirenNet
 
 def weights_init(m):
     if isinstance(m, nn.Conv2d):
@@ -213,14 +212,14 @@ class ModelGRU(nn.Module):
         super(ModelGRU, self).__init__()
         self.cnn_feature_dim = hidden_dim
         self.rnn_hidden_dim = hidden_dim
-        self.cnn = CNN_AVG(input_dim=1, out_dim=self.cnn_feature_dim)
+        self.cnn = CNN(input_dim=1, out_dim=self.cnn_feature_dim)
         #self.cnn = ResidualNet()
         self.gru = nn.GRU(
             input_size = self.cnn_feature_dim, 
             hidden_size = self.rnn_hidden_dim, 
             num_layers = 2,
             batch_first=True,
-            dropout=0.0)
+            dropout=0.2)
         self.mlp = MLP_COS(input_dim=self.rnn_hidden_dim+2)
 
     def forward(self, x, t, v0):
@@ -235,6 +234,8 @@ class ModelGRU(nn.Module):
         x = F.leaky_relu(x[:, -1, :])
         x = self.mlp(x, t, v0)
         return x
+    
+    
   
 class CNN_AVG(nn.Module):
     def __init__(self,input_dim=1, out_dim=256):
@@ -391,7 +392,7 @@ class MLP_COS(nn.Module):
         self.linear2 = nn.Linear(512, 512)
         self.linear3 = nn.Linear(512, 512)
         self.linear4 = nn.Linear(512, 256)
-        self.linear5 = nn.Linear(256, 2)
+        self.linear5 = nn.Linear(256, 4)
         
         self.apply(weights_init)
         
@@ -525,23 +526,3 @@ class VAE(nn.Module):
         z = self.reparameterize(mu, logvar)
         z_t = torch.cat([z, t], dim=1)
         return self.mlp(z_t), mu, logvar
-  
-class CNN_SIN(nn.Module):
-    def __init__(self):
-        super(CNN_SIN, self).__init__()
-        self.cnn = CNN()
-        self.siren = SirenNet(
-            dim_in = 256+1,                        # input dimension, ex. 2d coor
-            dim_hidden = 256,                  # hidden dimension
-            dim_out = 2,                       # output dimension, ex. rgb value
-            num_layers = 5,                    # number of layers
-            final_activation = nn.Tanh(),      # activation of final layer (nn.Identity() for direct output)
-            w0_initial = 30.                   # different signals may require different omega_0 in the first layer - this is a hyperparameter
-        )
-        #self.mlp = SIN_MLP(input_dim=256+1)
-    
-    def forward(self, x, t):
-        x = self.cnn(x)
-        h = torch.cat([x, t], dim=1)
-        x = self.siren(h)
-        return x

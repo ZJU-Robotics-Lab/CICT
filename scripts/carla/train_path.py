@@ -22,7 +22,7 @@ from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
 from learning.path_model import ModelGRU
-from learning.costmap_dataset import CostMapDataset
+from learning.costmap_dataset import CostMapDataset, CostMapDataset2
 from utils import write_params, fig2data
 
 global_trajectory = None
@@ -37,11 +37,12 @@ device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--test_mode', type=bool, default=False, help='test model switch')
-parser.add_argument('--dataset_name', type=str, default="gru-04", help='name of the dataset')
+parser.add_argument('--dataset_name', type=str, default="mu-log_var-02", help='name of the dataset')
 parser.add_argument('--width', type=int, default=400, help='image width')
 parser.add_argument('--height', type=int, default=200, help='image height')
 parser.add_argument('--scale', type=float, default=25., help='longitudinal length')
-parser.add_argument('--batch_size', type=int, default=48, help='size of the batches')
+parser.add_argument('--batch_size', type=int, default=4, help='size of the batches')
+parser.add_argument('--traj_steps', type=int, default=8, help='traj steps')
 parser.add_argument('--weight_decay', type=float, default=5e-4, help='adam: weight_decay')
 parser.add_argument('--lr', type=float, default=3e-4, help='adam: learning rate')
 parser.add_argument('--gamma', type=float, default=0.1, help='xy and vxy loss trade off')
@@ -55,7 +56,7 @@ parser.add_argument('--max_t', type=float, default=3., help='max time')
 opt = parser.parse_args()
 if opt.test_mode: opt.batch_size = 1
     
-description = 'gru-03, fix bugs'
+description = 'mu-log_var-02'
 log_path = 'result/log/'+opt.dataset_name+'/'
 os.makedirs('result/saved_models/%s' % opt.dataset_name, exist_ok=True)
 os.makedirs('result/output/%s' % opt.dataset_name, exist_ok=True)
@@ -65,9 +66,9 @@ if not opt.test_mode:
     write_params(log_path, parser, description)
     
 model = ModelGRU(256).to(device)
-#model.load_state_dict(torch.load('result/saved_models/gru-03/model_318000.pth'))
-model.load_state_dict(torch.load('../../ckpt/gru/model_232000.pth'))
-train_loader = DataLoader(CostMapDataset(data_index=[1,2,3,4,5,6,7,9,10], opt=opt, dataset_path='/media/wang/DATASET/CARLA_HUMAN/town01/'), batch_size=opt.batch_size, shuffle=False, num_workers=opt.n_cpu)
+#model.load_state_dict(torch.load('result/saved_models/mu-log_var-01/model_54000.pth'))
+#model.load_state_dict(torch.load('../../ckpt/mu-log_var-01/model_54000.pth'))
+train_loader = DataLoader(CostMapDataset2(data_index=[1,2,3,4,5,6,7,9,10], opt=opt, dataset_path='/media/wang/DATASET/CARLA_HUMAN/town01/'), batch_size=opt.batch_size, shuffle=False, num_workers=opt.n_cpu)
 
 eval_loader = DataLoader(CostMapDataset(data_index=[8], opt=opt, dataset_path='/media/wang/DATASET/CARLA_HUMAN/town01/', evalmode=True), batch_size=1, shuffle=False, num_workers=1)
 eval_samples = iter(eval_loader)
@@ -99,9 +100,12 @@ def show_traj(step):
     ax1 = fig.add_subplot(111)
     x = trajectory['x']
     y = trajectory['y']
+    var = trajectory['var']
     real_x = real_trajectory['x']
     real_y = real_trajectory['y']
     ax1.plot(x, y, label='trajectory', color = 'b', linewidth=5)
+    ax1.fill_betweenx(y, x-var, x+var, color="crimson", alpha=0.4)
+    #ax1.fill_between(x, y-var, y+var, color="crimson", alpha=0.4)
     ax1.plot(real_x, real_y, label='real-trajectory', color = 'b', linewidth=5, linestyle='--')
     ax1.set_xlabel('Forward/(m)')
     ax1.set_ylabel('Sideways/(m)')  
@@ -169,6 +173,7 @@ def draw_traj(step):
 
     x = output[:,0]*opt.max_dist
     y = output[:,1]*opt.max_dist
+    log_var = output[:,2]
     
     theta_a = torch.atan2(ay, ax)
     theta_v = torch.atan2(vy, vx)
@@ -182,6 +187,8 @@ def draw_traj(step):
     ax = ax.data.cpu().numpy()
     ay = ay.data.cpu().numpy()
     a = a.data.cpu().numpy()
+    log_var = log_var.data.cpu().numpy()
+    var = np.sqrt(np.exp(log_var))*opt.max_dist
     
     real_x = batch['x_list'].data.cpu().numpy()[0]
     real_y = batch['y_list'].data.cpu().numpy()[0]
@@ -190,7 +197,7 @@ def draw_traj(step):
     ts_list = batch['ts_list'].data.cpu().numpy()[0]
     a_list = batch['a_list'].data.cpu().numpy()[0]
 
-    global_trajectory = {'x':x, 'y':y, 'vx':vx, 'vy':vy, 'a':a}
+    global_trajectory = {'x':x, 'y':y, 'vx':vx, 'vy':vy, 'a':a, 'var':var}
     global_trajectory_real = {'x':real_x, 'y':real_y, 'vx':real_vx, 'vy':real_vy, 'ts_list':ts_list, 'a_list':a_list}
     show_traj(step)
         
@@ -317,6 +324,11 @@ def eval_error(total_step):
         logger.add_scalar('eval/rel_a', sum(rel_a)/len(rel_a), total_step)
     model.train()
 
+def reparameterize(mu, logvar):
+    std = torch.exp(0.5*logvar)
+    eps = torch.randn_like(std)
+    return mu + eps*std
+    
 total_step = 0
 if opt.test_mode:
     abs_x = []
@@ -326,8 +338,26 @@ print('Start to train ...')
 for i, batch in enumerate(train_loader):
     total_step += 1
     if opt.test_mode:
-        for j in range(1000): draw_traj()
+        for j in range(100): draw_traj(j)
         break
+    """
+    print('img:', batch['img'].shape)
+    print('t:', batch['t'].shape)
+    print('xy:', batch['xy'].shape)
+    print('vxy:', batch['vxy'].shape)
+    print('axy:', batch['axy'].shape)
+    print('a:', batch['a'].shape)
+    print('v_0:', batch['v_0'].shape)
+    """
+
+    batch['t'] = batch['t'].view(-1,1)
+    batch['a'] = batch['a'].view(-1,1)
+    batch['v_0'] = batch['v_0'].view(-1,1)
+    batch['xy'] = batch['xy'].view(-1,2)
+    batch['vxy'] = batch['vxy'].view(-1,2)
+    batch['axy'] = batch['axy'].view(-1,2)
+    batch['img'] = batch['img'].expand(opt.traj_steps, opt.batch_size,10,1,opt.height, opt.width)
+    batch['img'] = batch['img'].reshape(opt.traj_steps*opt.batch_size,10,1,opt.height, opt.width)
 
     batch['img'] = batch['img'].to(device)
     batch['t'] = batch['t'].to(device)
@@ -339,9 +369,9 @@ for i, batch in enumerate(train_loader):
     batch['img'].requires_grad = True
     batch['t'].requires_grad = True
     
-    batch_size, timesteps, C, H, W = batch['img'].size()
-    x = batch['img'].view(batch_size * timesteps, C, H, W)
+    
     output = model(batch['img'], batch['t'], batch['v_0'])
+    
     vx = grad(output[:,0].sum(), batch['t'], create_graph=True)[0]
     vy = grad(output[:,1].sum(), batch['t'], create_graph=True)[0]
     output_vxy = (opt.max_dist/opt.max_t)*torch.cat([vx, vy], dim=1)
@@ -356,7 +386,20 @@ for i, batch in enumerate(train_loader):
     a = torch.mul(torch.norm(output_axy, dim=1), sign.flatten()).unsqueeze(1)
 
     optimizer.zero_grad()
-    loss_xy = criterion(output, batch['xy'])
+    #loss_xy = criterion(output, batch['xy'])
+    x_logvar = output[:,2]
+    x_l2_loss = torch.pow((output[:,0]-batch['xy'][:,0]), 2)
+    loss_x = torch.mean((torch.exp(-x_logvar) * x_l2_loss + x_logvar) * 0.5)
+    
+    y_logvar = output[:,3]
+    y_l2_loss = torch.pow((output[:,1]-batch['xy'][:,1]), 2)
+    loss_y = torch.mean((torch.exp(-y_logvar) * y_l2_loss + y_logvar) * 0.5)
+            
+    #loss_x = ((output[:,0]-batch['xy'][:,0])/(torch.sqrt(2*torch.exp(output[:,2]))))**2 + 0.5*output[:,2]
+    #loss_x = torch.mean(loss_x)
+    #loss_y = criterion(output[:,1], batch['xy'][:,1])
+    loss_xy = loss_x + loss_y
+    
     loss_vxy = criterion(output_vxy, batch['vxy'])
     #loss_axy = criterion(output_axy, batch['axy'])
     loss_axy = criterion(a, batch['a'])
@@ -366,7 +409,9 @@ for i, batch in enumerate(train_loader):
     torch.nn.utils.clip_grad_value_(model.parameters(), clip_value=1)
     optimizer.step()
 
-    logger.add_scalar('train/loss_xy', opt.max_dist*loss_xy.item(), total_step)
+    logger.add_scalar('train/loss_x', loss_x, total_step)
+    logger.add_scalar('train/loss_y', loss_y, total_step)
+    logger.add_scalar('train/loss_xy', loss_xy.item(), total_step)
     logger.add_scalar('train/loss_vxy', loss_vxy.item(), total_step)
     logger.add_scalar('train/loss_axy', loss_axy.item(), total_step)
     logger.add_scalar('train/loss', loss.item(), total_step)

@@ -74,7 +74,8 @@ generator = GeneratorUNet()
 generator = generator.to(device)
 generator.load_state_dict(torch.load('../../ckpt/sim-obs/g.pth'))
 model = ModelGRU().to(device)
-model.load_state_dict(torch.load('../../ckpt/gru/model_214000.pth'))
+model.load_state_dict(torch.load('result/saved_models/mu-log_var-01/model_54000.pth'))
+#model.load_state_dict(torch.load('../../ckpt/gru/model_214000.pth'))
 generator.eval()
 model.eval()
 
@@ -285,6 +286,7 @@ def get_traj(plan_time):
 
     x = output[:,0]*args.max_dist
     y = output[:,1]*args.max_dist
+    log_var = output[:,2]*args.max_dist
     
     theta_a = torch.atan2(ay, ax)
     theta_v = torch.atan2(vy, vx)
@@ -301,6 +303,8 @@ def get_traj(plan_time):
     ax = ax.data.cpu().numpy()
     ay = ay.data.cpu().numpy()
     a = a.data.cpu().numpy()
+    log_var = log_var.data.cpu().numpy()
+    var = np.sqrt(np.exp(log_var))
     trajectory = {'time':plan_time, 'x':x, 'y':y, 'vx':vx, 'vy':vy, 'ax':ax, 'ay':ay, 'a':a}
     return trajectory
 
@@ -360,7 +364,7 @@ def get_control(x, y, vx, vy, ax, ay):
     Kx = 0.3
     Kv = 3.0*1.5
     
-    Ky = 1.5e-2
+    Ky = 1.9e-2
     K_theta = 0.05
     
     control = carla.VehicleControl()
