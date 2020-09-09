@@ -16,6 +16,13 @@ def angle_normal(angle):
         angle += 2*np.pi
     return angle
 
+def xy2uv(x, y):
+    pixs_per_meter = 200./25.
+    u = (200-x*pixs_per_meter).astype(int)
+    v = (y*pixs_per_meter+400//2).astype(int)
+    #mask = np.where((u >= 0)&(u < 200))[0]
+    return u, v
+
 class CostMapDataset(Dataset):
     def __init__(self, data_index, opt, dataset_path='/media/wang/DATASET/CARLA/town01/', evalmode=False):
         self.evalmode = evalmode
@@ -146,33 +153,73 @@ class CostMapDataset(Dataset):
             vx_list = []
             vy_list = []
             a_list = []
+            collision_flag = False
+            collision_x = None
+            collision_y = None
+            collision_t = None
             for i in range(ts_index, len(self.files_dict[data_index])-100):
                 ts = self.files_dict[data_index][i]
                 if float(ts)-float(file_name) > self.max_t:
                     break
                 else:
                     x_, y_ = self.tf_pose(data_index, ts, yaw, x_0, y_0)
-                    x_list.append(x_)
-                    y_list.append(y_)
-                    vx_ = self.vel_dict[data_index][ts][0]
-                    vy_ = self.vel_dict[data_index][ts][1]
-                    vx = np.cos(yaw)*vx_ + np.sin(yaw)*vy_
-                    vy = np.cos(yaw)*vy_ - np.sin(yaw)*vx_
-                    
-                    ax_ = self.acc_dict[data_index][ts][0]
-                    ay_ = self.acc_dict[data_index][ts][1]
-                    ax = ax_*np.cos(yaw) + ay_*np.sin(yaw)
-                    ay = ay_*np.cos(yaw) - ax_*np.sin(yaw)
-                    theta_a = np.arctan2(ay, ax)
-                    theta_v = np.arctan2(vy, vx)
-                    sign = np.sign(np.cos(theta_a-theta_v))
-                    a = sign*np.sqrt(ax*ax + ay*ay)
-                    a_list.append(a)
-                    vx_list.append(vx)
-                    vy_list.append(vy)
-                    ts_list.append(ts)
-                    relative_t_list.append(float(ts)-float(file_name))
+                    u, v = xy2uv(x_, y_)
+
+                    if not collision_flag and u >= 0 and u < 200 and v >=0 and v < 400:
+                        if imgs[-1][0][u][v] < -0.3:
+                            collision_flag = True
+                            collision_x = x_
+                            collision_y = y_
+                            collision_t = ts
+                            #break
+                    if collision_flag:
+                        x_list.append(collision_x)
+                        y_list.append(collision_y)
+                        vx = 0.
+                        vy = 0.
+                        a = 0.
+                        a_list.append(0.)
+                        vx_list.append(0.)
+                        vy_list.append(0.)
+                        ts_list.append(ts)
+                        relative_t_list.append(float(ts)-float(file_name))
+                    else:
+                        x_list.append(x_)
+                        y_list.append(y_)
+                        vx_ = self.vel_dict[data_index][ts][0]
+                        vy_ = self.vel_dict[data_index][ts][1]
+                        vx = np.cos(yaw)*vx_ + np.sin(yaw)*vy_
+                        vy = np.cos(yaw)*vy_ - np.sin(yaw)*vx_
                         
+                        ax_ = self.acc_dict[data_index][ts][0]
+                        ay_ = self.acc_dict[data_index][ts][1]
+                        ax = ax_*np.cos(yaw) + ay_*np.sin(yaw)
+                        ay = ay_*np.cos(yaw) - ax_*np.sin(yaw)
+                        theta_a = np.arctan2(ay, ax)
+                        theta_v = np.arctan2(vy, vx)
+                        sign = np.sign(np.cos(theta_a-theta_v))
+                        a = sign*np.sqrt(ax*ax + ay*ay)
+                        a_list.append(a)
+                        vx_list.append(vx)
+                        vy_list.append(vy)
+                        ts_list.append(ts)
+                        relative_t_list.append(float(ts)-float(file_name))
+              
+            """    
+            if collision_flag:
+                max_a = 50
+                brake_dist = (vx_list[-1]**2+vy_list[-1]**2)/(2*max_a)
+                for i in range(1,len(x_list)+1):
+                    brake_dist -= np.sqrt(x_list[-i]**2+y_list[-i]**2)
+                    if brake_dist <= 0:
+                        break
+                start = i
+                brake_dist = (vx_list[-start]**2+vy_list[-start]**2)/(2*max_a)
+                brake_t = np.sqrt(vx_list[-start]**2+vy_list[-start]**2)/max_a
+                for i in range(len(x_list)-start, len(x_list)):
+                    pass
+            """
+                
             if len(ts_list) == 0:
                 continue
             else:
@@ -192,30 +239,43 @@ class CostMapDataset(Dataset):
         #vy_0 = np.cos(yaw)*_vy_0 - np.sin(yaw)*_vx_0
         v_0 = np.sqrt(_vx_0*_vx_0 + _vy_0*_vy_0)
         v_0 = torch.FloatTensor([v_0])
-        # x, y
-        x, y = self.tf_pose(data_index, ts, yaw, x_0, y_0)
-        xy = torch.FloatTensor([x/self.max_dist, y/self.max_dist])# [-1, 1]
-        # yaw_t
-        yaw_t = angle_normal(np.deg2rad(self.pose_dict[data_index][ts][3]) - yaw)
-        yaw_t = torch.FloatTensor([yaw_t/np.pi])# [-1, 1]
-        
-        # vx, vy
-        _vx = self.vel_dict[data_index][ts][0]
-        _vy = self.vel_dict[data_index][ts][1]
-        vx = np.cos(yaw)*_vx + np.sin(yaw)*_vy
-        vy = np.cos(yaw)*_vy - np.sin(yaw)*_vx
-        
-        # ax, ay
-        _ax = self.acc_dict[data_index][ts][0]
-        _ay = self.acc_dict[data_index][ts][1]
-        ax = _ax*np.cos(yaw) + _ay*np.sin(yaw)
-        ay = _ay*np.cos(yaw) - _ax*np.sin(yaw)
-        
-        theta_a = np.arctan2(_ay, _ax)
-        theta_v = np.arctan2(_vy, _vx)
-        sign = np.sign(np.cos(theta_a-theta_v))
-        a = sign*np.sqrt(ax*ax + ay*ay)
-        a = torch.FloatTensor([a])
+        if collision_flag and float(ts) >= float(collision_t):
+            ts = collision_t
+            # x, y
+            x, y = self.tf_pose(data_index, ts, yaw, x_0, y_0)
+            xy = torch.FloatTensor([x/self.max_dist, y/self.max_dist])# [-1, 1]
+            
+            # vx, vy
+            vx = 0
+            vy = 0
+            
+            # ax, ay
+            ax = 0
+            ay = 0
+            a = 0
+            a = torch.FloatTensor([a])
+        else:
+            # x, y
+            x, y = self.tf_pose(data_index, ts, yaw, x_0, y_0)
+            xy = torch.FloatTensor([x/self.max_dist, y/self.max_dist])# [-1, 1]
+            
+            # vx, vy
+            _vx = self.vel_dict[data_index][ts][0]
+            _vy = self.vel_dict[data_index][ts][1]
+            vx = np.cos(yaw)*_vx + np.sin(yaw)*_vy
+            vy = np.cos(yaw)*_vy - np.sin(yaw)*_vx
+            
+            # ax, ay
+            _ax = self.acc_dict[data_index][ts][0]
+            _ay = self.acc_dict[data_index][ts][1]
+            ax = _ax*np.cos(yaw) + _ay*np.sin(yaw)
+            ay = _ay*np.cos(yaw) - _ax*np.sin(yaw)
+            
+            theta_a = np.arctan2(_ay, _ax)
+            theta_v = np.arctan2(_vy, _vx)
+            sign = np.sign(np.cos(theta_a-theta_v))
+            a = sign*np.sqrt(ax*ax + ay*ay)
+            a = torch.FloatTensor([a])
         
         vxy = torch.FloatTensor([vx, vy])
         axy = torch.FloatTensor([ax, ay])
@@ -227,7 +287,7 @@ class CostMapDataset(Dataset):
         relative_t_list = torch.FloatTensor(relative_t_list)
         if self.evalmode:
             return {'img': imgs, 't': t, 'xy':xy, 'vxy':vxy, 'axy':axy, 'a':a, 'v_0':v_0,
-                    'yaw_t': yaw_t,'a_list':a_list,
+                    'a_list':a_list,
                     'x_list':x_list, 'y_list':y_list,
                     'vx_list':vx_list, 'vy_list':vy_list,
                     'ts_list':relative_t_list}
@@ -591,7 +651,6 @@ class FakeCostMapDataset(Dataset):
             image_path = self.dataset_path + str(data_index)+'/img/'+file_name+'.png'
             img = Image.open(image_path).convert("RGB")
             img = self.transform(img)
-            
             # nav
             nav_path = self.dataset_path + str(data_index)+'/nav/'+file_name+'.png'
             nav = Image.open(nav_path).convert("RGB")
@@ -660,3 +719,55 @@ class FakeCostMapDataset(Dataset):
 
     def __len__(self):
         return 100000000000
+    
+if __name__ == '__main__':
+    import argparse
+    from datetime import datetime
+    from PIL import Image, ImageDraw
+    from torch.utils.data import DataLoader
+    random.seed(datetime.now())
+    torch.manual_seed(666)
+    torch.cuda.manual_seed(666)
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--dataset_name', type=str, default="mu-log_var-test", help='name of the dataset')
+    parser.add_argument('--width', type=int, default=400, help='image width')
+    parser.add_argument('--height', type=int, default=200, help='image height')
+    parser.add_argument('--scale', type=float, default=25., help='longitudinal length')
+    parser.add_argument('--batch_size', type=int, default=1, help='size of the batches')
+    parser.add_argument('--img_step', type=int, default=3, help='RNN input image step')
+    parser.add_argument('--traj_steps', type=int, default=8, help='traj steps')
+    parser.add_argument('--max_dist', type=float, default=25., help='max distance')
+    parser.add_argument('--max_t', type=float, default=3., help='max time')
+    opt = parser.parse_args()
+    
+    train_loader = DataLoader(CostMapDataset(data_index=[1,2,3,4,5,6,7,9,10], opt=opt, dataset_path='/media/wang/DATASET/CARLA_HUMAN/town01/', evalmode=True), batch_size=1, shuffle=False)
+    
+    cnt = 0
+    for i, batch in enumerate(train_loader):
+
+        img = batch['img'][:,-1,:].clone().data.numpy().squeeze()*127+128
+        img = Image.fromarray(img).convert("RGB")
+        draw =ImageDraw.Draw(img)
+        
+    
+        real_x = batch['x_list'].squeeze().data.numpy()
+        real_y = batch['y_list'].squeeze().data.numpy()
+        real_u, real_v = xy2uv(real_x, real_y)
+    
+        for i in range(len(real_u)-1):
+            draw.line((real_v[i], real_u[i], real_v[i]+1, real_u[i]+1), 'blue')
+            draw.line((real_v[i], real_u[i], real_v[i]-1, real_u[i]-1), 'blue')
+            #draw.line((real_v[i]+1, real_u[i], real_v[i+1]+1, real_u[i+1]), 'blue')
+            #draw.line((real_v[i]-1, real_u[i], real_v[i+1]-1, real_u[i+1]), 'blue')
+        
+        if cnt % 10 == 0:
+            img.show()
+        cnt += 1
+        if cnt > 50:
+            break
+        #break
+    
+    
+    
+    

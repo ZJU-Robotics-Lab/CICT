@@ -37,11 +37,11 @@ device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--test_mode', type=bool, default=False, help='test model switch')
-parser.add_argument('--dataset_name', type=str, default="mu-log_var-02", help='name of the dataset')
+parser.add_argument('--dataset_name', type=str, default="mu-log_var-05", help='name of the dataset')
 parser.add_argument('--width', type=int, default=400, help='image width')
 parser.add_argument('--height', type=int, default=200, help='image height')
 parser.add_argument('--scale', type=float, default=25., help='longitudinal length')
-parser.add_argument('--batch_size', type=int, default=4, help='size of the batches')
+parser.add_argument('--batch_size', type=int, default=32, help='size of the batches')
 parser.add_argument('--traj_steps', type=int, default=8, help='traj steps')
 parser.add_argument('--weight_decay', type=float, default=5e-4, help='adam: weight_decay')
 parser.add_argument('--lr', type=float, default=3e-4, help='adam: learning rate')
@@ -56,7 +56,7 @@ parser.add_argument('--max_t', type=float, default=3., help='max time')
 opt = parser.parse_args()
 if opt.test_mode: opt.batch_size = 1
     
-description = 'mu-log_var-02'
+description = 'change costmap'
 log_path = 'result/log/'+opt.dataset_name+'/'
 os.makedirs('result/saved_models/%s' % opt.dataset_name, exist_ok=True)
 os.makedirs('result/output/%s' % opt.dataset_name, exist_ok=True)
@@ -67,8 +67,8 @@ if not opt.test_mode:
     
 model = ModelGRU(256).to(device)
 #model.load_state_dict(torch.load('result/saved_models/mu-log_var-01/model_54000.pth'))
-#model.load_state_dict(torch.load('../../ckpt/mu-log_var-01/model_54000.pth'))
-train_loader = DataLoader(CostMapDataset2(data_index=[1,2,3,4,5,6,7,9,10], opt=opt, dataset_path='/media/wang/DATASET/CARLA_HUMAN/town01/'), batch_size=opt.batch_size, shuffle=False, num_workers=opt.n_cpu)
+model.load_state_dict(torch.load('result/saved_models/mu-log_var-03/model_222000.pth'))
+train_loader = DataLoader(CostMapDataset(data_index=[1,2,3,4,5,6,7,9,10], opt=opt, dataset_path='/media/wang/DATASET/CARLA_HUMAN/town01/'), batch_size=opt.batch_size, shuffle=False, num_workers=opt.n_cpu)
 
 eval_loader = DataLoader(CostMapDataset(data_index=[8], opt=opt, dataset_path='/media/wang/DATASET/CARLA_HUMAN/town01/', evalmode=True), batch_size=1, shuffle=False, num_workers=1)
 eval_samples = iter(eval_loader)
@@ -100,12 +100,13 @@ def show_traj(step):
     ax1 = fig.add_subplot(111)
     x = trajectory['x']
     y = trajectory['y']
-    var = trajectory['var']
+    x_var = trajectory['x_var']
+    y_var = trajectory['y_var']
     real_x = real_trajectory['x']
     real_y = real_trajectory['y']
     ax1.plot(x, y, label='trajectory', color = 'b', linewidth=5)
-    ax1.fill_betweenx(y, x-var, x+var, color="crimson", alpha=0.4)
-    #ax1.fill_between(x, y-var, y+var, color="crimson", alpha=0.4)
+    ax1.fill_betweenx(y, x-x_var, x+x_var, color="crimson", alpha=0.4)
+    ax1.fill_between(x, y-y_var, y+y_var, color="cyan", alpha=0.4)
     ax1.plot(real_x, real_y, label='real-trajectory', color = 'b', linewidth=5, linestyle='--')
     ax1.set_xlabel('Forward/(m)')
     ax1.set_ylabel('Sideways/(m)')  
@@ -114,7 +115,7 @@ def show_traj(step):
     plt.legend(loc='lower right')
     
     t = max_x*np.arange(0, 1.0, 1./x.shape[0])
-    real_t = max_x*global_trajectory_real['ts_list']
+    real_t = max_x/opt.max_t*global_trajectory_real['ts_list']
     a = trajectory['a']
     vx = trajectory['vx']
     vy = trajectory['vy']
@@ -124,6 +125,7 @@ def show_traj(step):
     v = np.sqrt(np.power(vx, 2), np.power(vy, 2))
     angle = np.arctan2(vy, vx)/np.pi*max_speed
     real_v = np.sqrt(np.power(real_vx, 2), np.power(real_vy, 2))
+
     real_angle = np.arctan2(real_vy, real_vx)/np.pi*max_speed
     ax2 = ax1.twinx()
     ax2.plot(t, v, label='speed', color = 'r', linewidth=2)
@@ -173,7 +175,8 @@ def draw_traj(step):
 
     x = output[:,0]*opt.max_dist
     y = output[:,1]*opt.max_dist
-    log_var = output[:,2]
+    x_log_var = output[:,2]
+    y_log_var = output[:,3]
     
     theta_a = torch.atan2(ay, ax)
     theta_v = torch.atan2(vy, vx)
@@ -187,8 +190,10 @@ def draw_traj(step):
     ax = ax.data.cpu().numpy()
     ay = ay.data.cpu().numpy()
     a = a.data.cpu().numpy()
-    log_var = log_var.data.cpu().numpy()
-    var = np.sqrt(np.exp(log_var))*opt.max_dist
+    x_log_var = x_log_var.data.cpu().numpy()
+    y_log_var = y_log_var.data.cpu().numpy()
+    x_var = np.sqrt(np.exp(x_log_var))*opt.max_dist
+    y_var = np.sqrt(np.exp(y_log_var))*opt.max_dist
     
     real_x = batch['x_list'].data.cpu().numpy()[0]
     real_y = batch['y_list'].data.cpu().numpy()[0]
@@ -197,7 +202,7 @@ def draw_traj(step):
     ts_list = batch['ts_list'].data.cpu().numpy()[0]
     a_list = batch['a_list'].data.cpu().numpy()[0]
 
-    global_trajectory = {'x':x, 'y':y, 'vx':vx, 'vy':vy, 'a':a, 'var':var}
+    global_trajectory = {'x':x, 'y':y, 'vx':vx, 'vy':vy, 'a':a, 'x_var':x_var,'y_var':y_var}
     global_trajectory_real = {'x':real_x, 'y':real_y, 'vx':real_vx, 'vy':real_vy, 'ts_list':ts_list, 'a_list':a_list}
     show_traj(step)
         
@@ -338,7 +343,7 @@ print('Start to train ...')
 for i, batch in enumerate(train_loader):
     total_step += 1
     if opt.test_mode:
-        for j in range(100): draw_traj(j)
+        for j in range(500): draw_traj(j)
         break
     """
     print('img:', batch['img'].shape)
@@ -349,7 +354,7 @@ for i, batch in enumerate(train_loader):
     print('a:', batch['a'].shape)
     print('v_0:', batch['v_0'].shape)
     """
-
+    """
     batch['t'] = batch['t'].view(-1,1)
     batch['a'] = batch['a'].view(-1,1)
     batch['v_0'] = batch['v_0'].view(-1,1)
@@ -358,7 +363,7 @@ for i, batch in enumerate(train_loader):
     batch['axy'] = batch['axy'].view(-1,2)
     batch['img'] = batch['img'].expand(opt.traj_steps, opt.batch_size,10,1,opt.height, opt.width)
     batch['img'] = batch['img'].reshape(opt.traj_steps*opt.batch_size,10,1,opt.height, opt.width)
-
+    """
     batch['img'] = batch['img'].to(device)
     batch['t'] = batch['t'].to(device)
     batch['v_0'] = batch['v_0'].to(device)

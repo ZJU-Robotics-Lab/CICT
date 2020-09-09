@@ -74,7 +74,7 @@ generator = GeneratorUNet()
 generator = generator.to(device)
 generator.load_state_dict(torch.load('../../ckpt/sim-obs/g.pth'))
 model = ModelGRU().to(device)
-model.load_state_dict(torch.load('result/saved_models/mu-log_var-01/model_54000.pth'))
+model.load_state_dict(torch.load('result/saved_models/mu-log_var-03/model_222000.pth'))
 #model.load_state_dict(torch.load('../../ckpt/gru/model_214000.pth'))
 generator.eval()
 model.eval()
@@ -337,7 +337,7 @@ def make_plan():
         global_ipm_image = ipm_image
 
         # 3. get trajectory
-        #time.sleep(0.3)
+        time.sleep(0.1)
         global_trajectory = get_traj(plan_time)
 
         if not start_control:
@@ -364,7 +364,7 @@ def get_control(x, y, vx, vy, ax, ay):
     Kx = 0.3
     Kv = 3.0*1.5
     
-    Ky = 1.9e-2
+    Ky = 9.0e-3
     K_theta = 0.05
     
     control = carla.VehicleControl()
