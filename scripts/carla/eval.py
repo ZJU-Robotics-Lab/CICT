@@ -57,8 +57,8 @@ os.makedirs('result/output/%s' % opt.dataset_name, exist_ok=True)
 global_trajectory = None
 global_trajectory_real = None
     
-model = ModelGRU(256).to(device)
-model.load_state_dict(torch.load('../../ckpt/gru/model_288000.pth'))
+model = ModelGRU().to(device)
+model.load_state_dict(torch.load('result/saved_models/mu-log_var-05/model_278000.pth'))
 model.eval()
 
 eval_loader = DataLoader(CostMapDataset(data_index=[1,2,3,4,5,6,7], opt=opt, dataset_path='/media/wang/DATASET/CARLA_HUMAN/town01/', evalmode=True), batch_size=1, shuffle=False, num_workers=1)
@@ -91,7 +91,7 @@ def show_traj(step):
     y = trajectory['y']
     real_x = real_trajectory['x']
     real_y = real_trajectory['y']
-    ax1.plot(x, y, label='trajectory', color = 'b', linewidth=5)
+    #ax1.plot(x, y, label='trajectory', color = 'b', linewidth=5)
     ax1.plot(real_x, real_y, label='real-trajectory', color = 'b', linewidth=5, linestyle='--')
     ax1.set_xlabel('Forward/(m)')
     ax1.set_ylabel('Sideways/(m)')  
@@ -99,8 +99,8 @@ def show_traj(step):
     ax1.set_ylim([-max_y, max_y])
     plt.legend(loc='lower right')
     
-    t = max_x*np.arange(0, 1.0, 1./x.shape[0])
-    real_t = max_x*global_trajectory_real['ts_list']
+    t = max_speed*np.arange(0, 1.0, 1./x.shape[0])
+    real_t = max_speed*global_trajectory_real['ts_list']
     a = trajectory['a']
     vx = trajectory['vx']
     vy = trajectory['vy']
@@ -112,9 +112,9 @@ def show_traj(step):
     real_v = np.sqrt(np.power(real_vx, 2), np.power(real_vy, 2))
     real_angle = np.arctan2(real_vy, real_vx)/np.pi*max_speed
     ax2 = ax1.twinx()
-    ax2.plot(t, v, label='speed', color = 'r', linewidth=2)
-    ax2.plot(t, a, label='acc', color = 'y', linewidth=2)
-    ax2.plot(t, angle, label='angle', color = 'g', linewidth=2)
+    #ax2.plot(t, v, label='speed', color = 'r', linewidth=2)
+    #ax2.plot(t, a, label='acc', color = 'y', linewidth=2)
+    #ax2.plot(t, angle, label='angle', color = 'g', linewidth=2)
     # real
     ax2.plot(real_t, real_v, label='real-speed', color = 'r', linewidth=2, linestyle='--')
     ax2.plot(real_t, real_a, label='real-acc', color = 'y', linewidth=2, linestyle='--')

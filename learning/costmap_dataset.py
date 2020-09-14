@@ -9,6 +9,85 @@ import torch
 from torch.utils.data import Dataset
 import torchvision.transforms as transforms
 
+import copy
+from scipy.special import comb
+np.set_printoptions(suppress=True, precision=4, linewidth=65535)
+import matplotlib.pyplot as plt
+
+def expand_control_points(point_array):
+    point_array_expand = copy.deepcopy(point_array)
+    size = point_array.shape[1]
+    assert size >= 3
+    for i in range(1,size-3):
+        p0, p1, p2 = point_array[:,i], point_array[:,i+1], point_array[:,i+2]
+        norm1, norm2 = np.linalg.norm(p0-p1), np.linalg.norm(p2-p1)
+        pc = p1 - 0.5*np.sqrt(norm1*norm2)*((p0-p1)/norm1 + (p2-p1)/norm2)
+        point_array_expand[:,i+1] = pc
+    return point_array_expand
+
+def bernstein(t, i, n):
+    return comb(n,i) * t**i * (1-t)**(n-i)
+
+def bezier_curve(t, point_array, bias=0):
+    t = np.clip(t, 0, 1)
+    n = point_array.shape[1]-1
+    p = np.array([0.,0.]).reshape(2,1)
+    size = len(t) if isinstance(t, np.ndarray) else 1
+    p = np.zeros((2, size))
+    new_point_array = np.diff(point_array, n=bias, axis=1)
+    for i in range(n+1-bias):
+        p += new_point_array[:,i][:,np.newaxis] * bernstein(t, i, n-bias) * n**bias
+    return p
+
+
+class Bezier(object):
+    def __init__(self, time_list, x_list, y_list, v0, vf=(-0.0001,-0.0001)):
+        t0, x0, y0 = time_list[0], x_list[0], y_list[0]
+        t_span = time_list[-1] - time_list[0]
+        time_array = np.array(time_list)
+        x_array, y_array = np.array(x_list), np.array(y_list)
+        time_array -= t0
+        x_array -= x0
+        y_array -= y0
+        time_array /= t_span
+
+        point_array = np.vstack((x_array, y_array))
+        n = point_array.shape[1]+1
+        v0, vf = np.array(v0), np.array(vf)
+        p0 = point_array[:, 0] + v0/n
+        pf = point_array[:,-1] - vf/n
+
+        point_array = np.insert(point_array, 1, values=p0, axis=1)
+        point_array = np.insert(point_array,-1, values=pf, axis=1)
+
+        point_array_expand = expand_control_points(point_array)
+
+        self.t0, self.t_span = t0, t_span
+        self.x0, self.y0 = x0, y0
+        self.p0 = np.array([x0, y0]).reshape(2,1)
+        self.point_array = point_array
+        self.point_array_expand = point_array_expand
+    
+
+    def position(self, time, expand=True):
+        time = np.clip(time, self.t0, self.t0+self.t_span)
+        t = (time - self.t0) / self.t_span
+        p = self.point_array_expand if expand else self.point_array
+        position = bezier_curve(t, p, bias=0)
+        return position + self.p0
+    
+    def velocity(self, time, expand=True):
+        time = np.clip(time, self.t0, self.t0+self.t_span)
+        t = (time - self.t0) / self.t_span
+        p = self.point_array_expand if expand else self.point_array
+        return bezier_curve(t, p, bias=1)
+    
+    def acc(self, time, expand=True):
+        time = np.clip(time, self.t0, self.t0+self.t_span)
+        t = (time - self.t0) / self.t_span
+        p = self.point_array_expand if expand else self.point_array
+        return bezier_curve(t, p, bias=2)
+    
 def angle_normal(angle):
     while angle >= np.pi:
         angle -= 2*np.pi
@@ -152,11 +231,13 @@ class CostMapDataset(Dataset):
             y_list = []
             vx_list = []
             vy_list = []
+            ax_list = []
+            ay_list = []
             a_list = []
             collision_flag = False
             collision_x = None
             collision_y = None
-            collision_t = None
+            collision_index = None
             for i in range(ts_index, len(self.files_dict[data_index])-100):
                 ts = self.files_dict[data_index][i]
                 if float(ts)-float(file_name) > self.max_t:
@@ -170,8 +251,9 @@ class CostMapDataset(Dataset):
                             collision_flag = True
                             collision_x = x_
                             collision_y = y_
-                            collision_t = ts
+                            collision_index = i
                             #break
+                    
                     if collision_flag:
                         x_list.append(collision_x)
                         y_list.append(collision_y)
@@ -181,6 +263,8 @@ class CostMapDataset(Dataset):
                         a_list.append(0.)
                         vx_list.append(0.)
                         vy_list.append(0.)
+                        ax_list.append(0.)
+                        ay_list.append(0.)
                         ts_list.append(ts)
                         relative_t_list.append(float(ts)-float(file_name))
                     else:
@@ -195,6 +279,8 @@ class CostMapDataset(Dataset):
                         ay_ = self.acc_dict[data_index][ts][1]
                         ax = ax_*np.cos(yaw) + ay_*np.sin(yaw)
                         ay = ay_*np.cos(yaw) - ax_*np.sin(yaw)
+                        ax_list.append(ax)
+                        ay_list.append(ay)
                         theta_a = np.arctan2(ay, ax)
                         theta_v = np.arctan2(vy, vx)
                         sign = np.sign(np.cos(theta_a-theta_v))
@@ -204,26 +290,63 @@ class CostMapDataset(Dataset):
                         vy_list.append(vy)
                         ts_list.append(ts)
                         relative_t_list.append(float(ts)-float(file_name))
-              
-            """    
+               
+            ####################
+            
             if collision_flag:
-                max_a = 50
-                brake_dist = (vx_list[-1]**2+vy_list[-1]**2)/(2*max_a)
-                for i in range(1,len(x_list)+1):
-                    brake_dist -= np.sqrt(x_list[-i]**2+y_list[-i]**2)
-                    if brake_dist <= 0:
+                a_brake = 10
+                start_index = collision_index - ts_index
+                brake_index = 0
+                for i in range(start_index):
+                    x_i = x_list[start_index-i]
+                    y_i = y_list[start_index-i]
+                    safe_dist = np.sqrt((x_i-collision_x)**2+(y_i-collision_y)**2)
+                    vx_i = vx_list[start_index-i]
+                    vy_i = vy_list[start_index-i]
+                    v2 = vx_i**2+vy_i**2
+                    brake_dist = v2/(2*a_brake)
+                    if brake_dist < safe_dist:
+                        brake_index = start_index - i
                         break
-                start = i
-                brake_dist = (vx_list[-start]**2+vy_list[-start]**2)/(2*max_a)
-                brake_t = np.sqrt(vx_list[-start]**2+vy_list[-start]**2)/max_a
-                for i in range(len(x_list)-start, len(x_list)):
-                    pass
-            """
-                
+                bz_ts = [float(item) for item in ts_list[brake_index:start_index]]
+                if len(bz_ts) > 2:
+                    bz_x = [x_list[brake_index], collision_x]
+                    bz_y = [y_list[brake_index], collision_y]
+                    bz_vx = vx_list[brake_index]
+                    bz_vy = vy_list[brake_index]
+                    #print(bz_ts)
+                    bezier = Bezier(bz_ts, bz_x, bz_y, v0=(bz_vx, bz_vy))
+                    sample_number = len(bz_ts)
+                    time_array = np.linspace(bezier.t0, bezier.t0+bezier.t_span, sample_number)
+                    #print(time_array)
+                    position_array = bezier.position(time_array, expand=True)
+                    velocity_array = bezier.velocity(time_array, expand=True)
+                    acc_array = bezier.acc(time_array, expand=True)
+                    
+                    new_x = position_array[0,:]
+                    new_y = position_array[1,:]
+                    new_vx = velocity_array[0,:]
+                    new_vy = velocity_array[1,:]
+                    new_ax = acc_array[0,:]
+                    new_ay = acc_array[1,:]
+                    for i in range(start_index-brake_index):
+                        x_list[brake_index+i] = new_x[i]
+                        y_list[brake_index+i] = new_y[i]
+                        vx_list[brake_index+i] = new_vx[i]
+                        vy_list[brake_index+i] = new_vy[i]
+                        ax_list[brake_index+i] = new_ax[i]
+                        ay_list[brake_index+i] = new_ay[i]
+                        a_list[brake_index+i] = -np.sqrt(new_ax[i]**2+new_ay[i]**2)
+                        ts_list[brake_index+i] = str(time_array[i])
+                        relative_t_list[brake_index+i] = time_array[i] - float(file_name)
+                        #relative_t_list.append(float(ts)-float(file_name))
+            
+            ####################
             if len(ts_list) == 0:
                 continue
             else:
                 ts = random.sample(ts_list, 1)[0]
+                ts_index = ts_list.index(ts)
                 #weights = [np.exp(-0.23*(float(ts)-float(file_name))) for ts in ts_list]
                 #sample_ts = random.choices(ts_list, weights)[0]
                 #print(weights/sum(weights))
@@ -235,10 +358,25 @@ class CostMapDataset(Dataset):
         # v0
         _vx_0 = self.vel_dict[data_index][file_name][0]
         _vy_0 = self.vel_dict[data_index][file_name][1]
-        #vx_0 = np.cos(yaw)*_vx_0 + np.sin(yaw)*_vy_0
-        #vy_0 = np.cos(yaw)*_vy_0 - np.sin(yaw)*_vx_0
         v_0 = np.sqrt(_vx_0*_vx_0 + _vy_0*_vy_0)
         v_0 = torch.FloatTensor([v_0])
+        
+        
+        x = x_list[ts_index]
+        y = y_list[ts_index]
+        xy = torch.FloatTensor([x/self.max_dist, y/self.max_dist])# [-1, 1]
+        
+        # vx, vy
+        vx = vx_list[ts_index]
+        vy = vy_list[ts_index]
+        
+        # ax, ay
+        ax = ax_list[ts_index]
+        ay = ax_list[ts_index]
+        
+        a = a_list[ts_index]
+        a = torch.FloatTensor([a])
+        """
         if collision_flag and float(ts) >= float(collision_t):
             ts = collision_t
             # x, y
@@ -276,7 +414,7 @@ class CostMapDataset(Dataset):
             sign = np.sign(np.cos(theta_a-theta_v))
             a = sign*np.sqrt(ax*ax + ay*ay)
             a = torch.FloatTensor([a])
-        
+        """
         vxy = torch.FloatTensor([vx, vy])
         axy = torch.FloatTensor([ax, ay])
         x_list = torch.FloatTensor(x_list)
@@ -477,7 +615,7 @@ class CostMapDataset2(CostMapDataset):
     
     
 class CARLADataset(Dataset):
-    def __init__(self, data_index, dataset_path='/media/wang/DATASET/CARLA_HUMAN/town01/', eval_mode=False):
+    def __init__(self, data_index, dataset_path='/media/wang/DATASET/CARLA/town01/', eval_mode=False):
         self.data_index = data_index
         self.eval_mode = eval_mode
         img_height = 128
@@ -727,7 +865,6 @@ if __name__ == '__main__':
     from torch.utils.data import DataLoader
     random.seed(datetime.now())
     torch.manual_seed(666)
-    torch.cuda.manual_seed(666)
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--dataset_name', type=str, default="mu-log_var-test", help='name of the dataset')
@@ -745,7 +882,6 @@ if __name__ == '__main__':
     
     cnt = 0
     for i, batch in enumerate(train_loader):
-
         img = batch['img'][:,-1,:].clone().data.numpy().squeeze()*127+128
         img = Image.fromarray(img).convert("RGB")
         draw =ImageDraw.Draw(img)
@@ -761,8 +897,8 @@ if __name__ == '__main__':
             #draw.line((real_v[i]+1, real_u[i], real_v[i+1]+1, real_u[i+1]), 'blue')
             #draw.line((real_v[i]-1, real_u[i], real_v[i+1]-1, real_u[i+1]), 'blue')
         
-        if cnt % 10 == 0:
-            img.show()
+        #if cnt % 10 == 0:
+        #    img.show()
         cnt += 1
         if cnt > 50:
             break

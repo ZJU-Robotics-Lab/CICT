@@ -53,6 +53,7 @@ global_cost_map = None
 global_transform = None
 max_steer_angle = 0.
 draw_cost_map = None
+global_view_img = None
 global_ipm_image = np.zeros((200,400), dtype=np.uint8)
 global_ipm_image.fill(255)
 
@@ -72,16 +73,16 @@ device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 generator = GeneratorUNet()
 generator = generator.to(device)
-generator.load_state_dict(torch.load('../../ckpt/sim-obs/g.pth'))
+#generator.load_state_dict(torch.load('../../ckpt/sim-obs/g.pth'))
+generator.load_state_dict(torch.load('result/saved_models/cgan-human-data-04/g_74000.pth'))
 model = ModelGRU().to(device)
-model.load_state_dict(torch.load('result/saved_models/mu-log_var-03/model_222000.pth'))
-#model.load_state_dict(torch.load('../../ckpt/gru/model_214000.pth'))
+model.load_state_dict(torch.load('result/saved_models/mu-log_var-06/model_382000.pth'))
 generator.eval()
 model.eval()
 
 parser = argparse.ArgumentParser(description='Params')
 parser.add_argument('-d', '--data', type=int, default=1, help='data index')
-parser.add_argument('-n', '--num', type=int, default=100000, help='total number')
+parser.add_argument('-s', '--save', type=bool, default=False, help='save result')
 parser.add_argument('--width', type=int, default=400, help='image width')
 parser.add_argument('--height', type=int, default=200, help='image height')
 parser.add_argument('--max_dist', type=float, default=25., help='max distance')
@@ -174,6 +175,12 @@ def image_callback(data):
     except:
         pass
     
+def view_image_callback(data):
+    global global_view_img
+    array = np.frombuffer(data.raw_data, dtype=np.dtype("uint8")) 
+    array = np.reshape(array, (data.height, data.width, 4)) # RGBA format
+    global_view_img = array
+    
 def lidar_callback(data):
     global global_pcd
     ts = time.time()
@@ -213,7 +220,7 @@ def visualize(img, costmap, nav, curve=None):
         left_img = cv2.resize(curve, (int(curve.shape[1]*show_img.shape[0]/curve.shape[0]), show_img.shape[0]), interpolation=cv2.INTER_CUBIC)
         show_img = np.hstack([show_img, left_img])
     cv2.imshow('Visualization', show_img)
-    cv2.imwrite('result/images/gru04/'+str(cnt)+'.png', show_img)
+    if args.save: cv2.imwrite('result/images/img02/'+str(cnt)+'.png', show_img)
     cv2.waitKey(10)
     cnt += 1
 
@@ -364,8 +371,8 @@ def get_control(x, y, vx, vy, ax, ay):
     Kx = 0.3
     Kv = 3.0*1.5
     
-    Ky = 9.0e-3
-    K_theta = 0.05
+    Ky = 9.2e-3
+    K_theta = 0.12
     
     control = carla.VehicleControl()
     control.manual_gear_shift = True
@@ -406,7 +413,7 @@ def get_control(x, y, vx, vy, ax, ay):
     control.steer = np.clip(steer, -1., 1.)
     return control
 
-def show_traj():
+def show_traj(save=False):
     global global_trajectory
     max_x = 30.
     max_y = 30.
@@ -424,7 +431,7 @@ def show_traj():
         ax1.set_ylim([-max_y, max_y])
         plt.legend(loc='lower right')
         
-        t = x[-1]*np.arange(0, 1.0, 1./x.shape[0])
+        t = max_x*np.arange(0, 1.0, 1./x.shape[0])
         a = trajectory['a']
         vx = trajectory['vx']
         vy = trajectory['vy']
@@ -437,7 +444,12 @@ def show_traj():
         ax2.set_ylabel('Velocity/(m/s)')
         ax2.set_ylim([-max_speed, max_speed])
         plt.legend(loc='upper right')
-        plt.show()
+        if not save:
+            plt.show()
+        else:
+            image = fig2data(fig)
+            plt.close('all')
+            return image
     
     
 def main():
@@ -471,6 +483,11 @@ def main():
         'camera':{
             'transform':carla.Transform(carla.Location(x=0.5, y=0.0, z=2.5)),
             'callback':image_callback,
+            },
+        'camera:view':{
+            #'transform':carla.Transform(carla.Location(x=0.0, y=4.0, z=4.0), carla.Rotation(pitch=-30, yaw=-60)),
+            'transform':carla.Transform(carla.Location(x=-3.0, y=0.0, z=6.0), carla.Rotation(pitch=-45)),
+            'callback':view_image_callback,
             },
         'lidar':{
             'transform':carla.Transform(carla.Location(x=0.5, y=0.0, z=2.5)),
@@ -566,8 +583,8 @@ def main():
         
         #print(global_vel*np.tan(control.steer)/w)
         
-        curve = None#show_traj()
-        visualize(global_img, draw_cost_map, global_nav, curve)
+        curve = None#show_traj(True)
+        visualize(global_view_img, draw_cost_map, global_nav, curve)
         
         #time.sleep(1/60.)
 

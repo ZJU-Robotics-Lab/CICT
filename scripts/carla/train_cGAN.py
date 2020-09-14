@@ -31,7 +31,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--eval', type=bool, default=False, help='if eval')
 parser.add_argument('--epoch', type=int, default=0, help='epoch to start training from')
 parser.add_argument('--n_epochs', type=int, default=100, help='number of epochs of training')
-parser.add_argument('--dataset_name', type=str, default="cgan-human-data-02", help='name of the dataset')
+parser.add_argument('--dataset_name', type=str, default="cgan-human-data-04", help='name of the dataset')
 parser.add_argument('--batch_size', type=int, default=32, help='size of the batches')
 parser.add_argument('--lr', type=float, default=3e-4, help='adam: learning rate')
 parser.add_argument('--b1', type=float, default=0.5, help='adam: decay of first order momentum of gradient')
@@ -71,8 +71,8 @@ discriminator = Discriminator()
 
 generator = generator.to(device)
 discriminator = discriminator.to(device)
-generator.load_state_dict(torch.load('../ckpt/sim/g.pth'))
-discriminator.load_state_dict(torch.load('../ckpt/sim/d.pth'))
+#generator.load_state_dict(torch.load('../../ckpt/sim/g.pth'))
+#discriminator.load_state_dict(torch.load('../../ckpt/sim/d.pth'))
 
 criterion_GAN.to(device)
 criterion_pixelwise.to(device)
@@ -112,9 +112,9 @@ def eval_dataset():
     
     generator.train()
 
-train_loader = DataLoader(CARLADataset(data_index=[16,17,18,19,20,21,22,23,24,25,26,27,28,29,31]),
+train_loader = DataLoader(CARLADataset(data_index=[1,2,3,4,5,6,7,8]),
                             batch_size=opt.batch_size, shuffle=False, num_workers=opt.n_cpu)
-test_val_dataloader = DataLoader(CARLADataset(data_index=[30], eval_mode=True),
+test_val_dataloader = DataLoader(CARLADataset(data_index=[9], eval_mode=True),
                             batch_size=opt.n_cpu, shuffle=False, num_workers=opt.n_cpu)
 test_samples = iter(test_val_dataloader)
 

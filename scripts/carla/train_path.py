@@ -37,7 +37,7 @@ device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--test_mode', type=bool, default=False, help='test model switch')
-parser.add_argument('--dataset_name', type=str, default="mu-log_var-05", help='name of the dataset')
+parser.add_argument('--dataset_name', type=str, default="mu-log_var-06", help='name of the dataset')
 parser.add_argument('--width', type=int, default=400, help='image width')
 parser.add_argument('--height', type=int, default=200, help='image height')
 parser.add_argument('--scale', type=float, default=25., help='longitudinal length')
@@ -67,7 +67,8 @@ if not opt.test_mode:
     
 model = ModelGRU(256).to(device)
 #model.load_state_dict(torch.load('result/saved_models/mu-log_var-01/model_54000.pth'))
-model.load_state_dict(torch.load('result/saved_models/mu-log_var-03/model_222000.pth'))
+#model.load_state_dict(torch.load('result/saved_models/mu-log_var-05/model_278000.pth'))
+model.load_state_dict(torch.load('result/saved_models/mu-log_var-05/model_382000.pth'))
 train_loader = DataLoader(CostMapDataset(data_index=[1,2,3,4,5,6,7,9,10], opt=opt, dataset_path='/media/wang/DATASET/CARLA_HUMAN/town01/'), batch_size=opt.batch_size, shuffle=False, num_workers=opt.n_cpu)
 
 eval_loader = DataLoader(CostMapDataset(data_index=[8], opt=opt, dataset_path='/media/wang/DATASET/CARLA_HUMAN/town01/', evalmode=True), batch_size=1, shuffle=False, num_workers=1)
