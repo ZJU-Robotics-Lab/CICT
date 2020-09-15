@@ -21,7 +21,7 @@ from torch.autograd import grad
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
-from learning.path_model import ModelGRU
+from learning.path_model import ModelGRU, ModelGMM
 from learning.costmap_dataset import CostMapDataset, CostMapDataset2
 from utils import write_params, fig2data
 
@@ -37,11 +37,12 @@ device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--test_mode', type=bool, default=False, help='test model switch')
-parser.add_argument('--dataset_name', type=str, default="test", help='name of the dataset')
+parser.add_argument('--dataset_name', type=str, default="test-gmm", help='name of the dataset')
+parser.add_argument('--k', type=int, default=10, help='gmm k')
 parser.add_argument('--width', type=int, default=400, help='image width')
 parser.add_argument('--height', type=int, default=200, help='image height')
 parser.add_argument('--scale', type=float, default=25., help='longitudinal length')
-parser.add_argument('--batch_size', type=int, default=32, help='size of the batches')
+parser.add_argument('--batch_size', type=int, default=3, help='size of the batches')
 parser.add_argument('--traj_steps', type=int, default=8, help='traj steps')
 parser.add_argument('--weight_decay', type=float, default=5e-4, help='adam: weight_decay')
 parser.add_argument('--lr', type=float, default=3e-4, help='adam: learning rate')
@@ -65,10 +66,11 @@ if not opt.test_mode:
     logger = SummaryWriter(log_dir=log_path)
     write_params(log_path, parser, description)
     
-model = ModelGRU(256).to(device)
+#model = ModelGRU(256).to(device)
+model = ModelGMM(k=opt.k, hidden_dim=256).to(device)
 #model.load_state_dict(torch.load('result/saved_models/mu-log_var-01/model_54000.pth'))
 #model.load_state_dict(torch.load('result/saved_models/mu-log_var-05/model_278000.pth'))
-model.load_state_dict(torch.load('result/saved_models/mu-log_var-05/model_382000.pth'))
+#model.load_state_dict(torch.load('result/saved_models/mu-log_var-05/model_382000.pth'))
 train_loader = DataLoader(CostMapDataset(data_index=[1,2,3,4,5,6,7,9,10], opt=opt, dataset_path='/media/wang/DATASET/CARLA_HUMAN/town01/'), batch_size=opt.batch_size, shuffle=False, num_workers=opt.n_cpu)
 
 eval_loader = DataLoader(CostMapDataset(data_index=[8], opt=opt, dataset_path='/media/wang/DATASET/CARLA_HUMAN/town01/', evalmode=True), batch_size=1, shuffle=False, num_workers=1)
@@ -335,6 +337,21 @@ def reparameterize(mu, logvar):
     eps = torch.randn_like(std)
     return mu + eps*std
     
+log_norm_constant = -0.5 * np.log(2 * np.pi)
+def log_gaussian(x, mean=0, logvar=0.):
+  a = (x - mean) ** 2
+  log_p = -0.5 * (logvar + a / logvar.exp())
+  log_p = log_p + log_norm_constant
+  return log_p
+
+def get_likelihoods(x, mu, logvar, log=True):
+  # get feature-wise log-likelihoods
+  log_likelihoods = log_gaussian(x,mu,logvar)
+  log_likelihoods = log_likelihoods.sum(-1)
+  if not log: log_likelihoods.exp_()
+  return log_likelihoods
+
+
 total_step = 0
 if opt.test_mode:
     abs_x = []
@@ -346,25 +363,7 @@ for i, batch in enumerate(train_loader):
     if opt.test_mode:
         for j in range(500): draw_traj(j)
         break
-    """
-    print('img:', batch['img'].shape)
-    print('t:', batch['t'].shape)
-    print('xy:', batch['xy'].shape)
-    print('vxy:', batch['vxy'].shape)
-    print('axy:', batch['axy'].shape)
-    print('a:', batch['a'].shape)
-    print('v_0:', batch['v_0'].shape)
-    """
-    """
-    batch['t'] = batch['t'].view(-1,1)
-    batch['a'] = batch['a'].view(-1,1)
-    batch['v_0'] = batch['v_0'].view(-1,1)
-    batch['xy'] = batch['xy'].view(-1,2)
-    batch['vxy'] = batch['vxy'].view(-1,2)
-    batch['axy'] = batch['axy'].view(-1,2)
-    batch['img'] = batch['img'].expand(opt.traj_steps, opt.batch_size,10,1,opt.height, opt.width)
-    batch['img'] = batch['img'].reshape(opt.traj_steps*opt.batch_size,10,1,opt.height, opt.width)
-    """
+    
     batch['img'] = batch['img'].to(device)
     batch['t'] = batch['t'].to(device)
     batch['v_0'] = batch['v_0'].to(device)
@@ -375,9 +374,14 @@ for i, batch in enumerate(train_loader):
     batch['img'].requires_grad = True
     batch['t'].requires_grad = True
     
-    
-    output = model(batch['img'], batch['t'], batch['v_0'])
-    
+    x = batch['xy'][:,0].unsqueeze(1)
+    weights_x, weights_y, mu_x, mu_y, logvar_x, logvar_y = model(batch['img'], batch['t'], batch['v_0'])
+    #print(x.shape, mu_x.shape, logvar_x.shape)
+    log_likelihoods = get_likelihoods(x, mu_x, logvar_x)
+    print('log_likelihoods:', log_likelihoods,log_likelihoods.shape)
+    loss = -log_likelihoods                                                                                 
+    break
+    """
     vx = grad(output[:,0].sum(), batch['t'], create_graph=True)[0]
     vy = grad(output[:,1].sum(), batch['t'], create_graph=True)[0]
     output_vxy = (opt.max_dist/opt.max_t)*torch.cat([vx, vy], dim=1)
@@ -428,3 +432,4 @@ for i, batch in enumerate(train_loader):
     
     if total_step % opt.checkpoint_interval == 0:
         torch.save(model.state_dict(), 'result/saved_models/%s/model_%d.pth'%(opt.dataset_name, total_step))
+    """

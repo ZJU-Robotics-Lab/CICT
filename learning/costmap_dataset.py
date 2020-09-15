@@ -41,7 +41,7 @@ def bezier_curve(t, point_array, bias=0):
 
 
 class Bezier(object):
-    def __init__(self, time_list, x_list, y_list, v0, vf=(-0.0001,-0.0001)):
+    def __init__(self, time_list, x_list, y_list, v0, vf=(0.000001,0.000001)):
         t0, x0, y0 = time_list[0], x_list[0], y_list[0]
         t_span = time_list[-1] - time_list[0]
         time_array = np.array(time_list)

@@ -166,7 +166,7 @@ class ResNet(nn.Module):
         for key in self.state_dict():
             if key.split('.')[-1]=="weight":
                 if "conv" in key:
-                    init.kaiming_normal_(self.state_dict()[key], mode='fan_out')
+                    nn.init.kaiming_normal_(self.state_dict()[key], mode='fan_out')
                 if "bn" in key:
                     if "SpatialGate" in key:
                         self.state_dict()[key][...] = 0
@@ -235,7 +235,34 @@ class ModelGRU(nn.Module):
         x = self.mlp(x, t, v0)
         return x
     
-    
+class ModelGMM(nn.Module):
+    def __init__(self, k=10, hidden_dim=256):
+        super(ModelGMM, self).__init__()
+        self.k = k
+        self.cnn_feature_dim = hidden_dim
+        self.rnn_hidden_dim = hidden_dim
+        self.cnn = CNN(input_dim=1, out_dim=self.cnn_feature_dim)
+        #self.cnn = ResidualNet()
+        self.gru = nn.GRU(
+            input_size = self.cnn_feature_dim, 
+            hidden_size = self.rnn_hidden_dim, 
+            num_layers = 2,
+            batch_first=True,
+            dropout=0.2)
+        self.mlp = MLP_GMM(input_dim=self.rnn_hidden_dim+2, k=self.k)
+
+    def forward(self, x, t, v0):
+        batch_size, timesteps, C, H, W = x.size()
+        
+        x = x.view(batch_size * timesteps, C, H, W)
+        x = self.cnn(x)
+        
+        x = x.view(batch_size, timesteps, -1)
+        x, h_n, = self.gru(x)
+
+        x = F.leaky_relu(x[:, -1, :])
+        x = self.mlp(x, t, v0)
+        return x
   
 class CNN_AVG(nn.Module):
     def __init__(self,input_dim=1, out_dim=256):
@@ -418,6 +445,48 @@ class MLP_COS(nn.Module):
         #x = F.dropout(x, p=0.5, training=self.training)
         x = self.linear5(x)
         return x
+    
+class MLP_GMM(nn.Module):
+    def __init__(self, input_dim=257, k=10, rate=1.0):
+        super(MLP_GMM, self).__init__()
+        self.k = k
+        self.rate = rate
+        self.linear1 = nn.Linear(input_dim, 512)
+        self.linear2 = nn.Linear(512, 512)
+        self.linear3 = nn.Linear(512, 512)
+        self.linear4 = nn.Linear(512, 256)
+        self.linear5 = nn.Linear(256, 3*2*self.k)
+        self.apply(weights_init)
+        
+    def forward(self, x, t, v0):
+        x = torch.cat([x, t], dim=1)
+        x = torch.cat([x, v0], dim=1)
+        x = self.linear1(x)
+        #x = F.leaky_relu(x)
+        x = torch.tanh(x)
+        #x = F.dropout(x, p=0.5, training=self.training)
+        x = self.linear2(x)
+        #x = F.leaky_relu(x)
+        x = torch.tanh(x)
+        #x = F.dropout(x, p=0.5, training=self.training)
+        x = self.linear3(x)
+        #x = F.leaky_relu(x)
+        x = torch.tanh(x)
+        #x = F.dropout(x, p=0.5, training=self.training)
+        
+        x = self.linear4(x)
+        #x = F.leaky_relu(x)
+        x = torch.cos(self.rate*x)
+        #x = F.dropout(x, p=0.5, training=self.training)
+        x = self.linear5(x)
+        
+        weights_x = x[:,:self.k]
+        weights_y = x[:,self.k:2*self.k]
+        mu_x = x[:,2*self.k:3*self.k]
+        mu_y = x[:,3*self.k:4*self.k]
+        logvar_x = x[:,4*self.k:5*self.k]
+        logvar_y = x[:,5*self.k:]
+        return weights_x, weights_y, mu_x, mu_y, logvar_x, logvar_y
     
 class Model_COS(nn.Module):
     def __init__(self,rate=1.0):

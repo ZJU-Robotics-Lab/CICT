@@ -1,6 +1,5 @@
 
 import numpy as np
-import time
 import copy
 from scipy.special import comb
 np.set_printoptions(suppress=True, precision=4, linewidth=65535)
@@ -79,28 +78,33 @@ class Bezier(object):
         t = (time - self.t0) / self.t_span
         p = self.point_array_expand if expand else self.point_array
         return bezier_curve(t, p, bias=1)
-
-
-
-
-
+    
+    def acc(self, time, expand=True):
+        time = np.clip(time, self.t0, self.t0+self.t_span)
+        t = (time - self.t0) / self.t_span
+        p = self.point_array_expand if expand else self.point_array
+        return bezier_curve(t, p, bias=2)
 
 
 import matplotlib.pyplot as plt
 
 if __name__ == "__main__":
-    t = [1547123737374427, 1547123737394436, 1547123737414446, 1547123737434455, 1547123737454465, 1547123737474474]
+    #t = [1547123737374427, 1547123737394436, 1547123737414446, 1547123737434455, 1547123737454465, 1547123737474474]
+    #t = list(np.array(t) / 1000000)
+    t = [1547123737374427, 1547123737414446]
     t = list(np.array(t) / 1000000)
     
-    x = [-170.17798699997365, -169.96834699995816, -169.71550199948251, -169.50583699997514, -169.29630899988115, -169.08685099985451]
-    y = [180.99746099999174, 180.98115799995139, 181.16259399999399, 181.14671300002374, 181.13088099996094, 181.11514000000898]
-
-    bezier = Bezier(t, x, y, v0=(2., 7.))
+    #x = [-170.17798699997365, -169.96834699995816, -169.71550199948251, -169.50583699997514, -169.29630899988115, -169.08685099985451]
+    #y = [180.99746099999174, 180.98115799995139, 181.16259399999399, 181.14671300002374, 181.13088099996094, 181.11514000000898]
+    x = [0, 1]
+    y = [0, 3]
+    bezier = Bezier(t, x, y, v0=(2., 1.))
 
     sample_number = 60
     time_array = np.linspace(bezier.t0, bezier.t0+bezier.t_span, sample_number)
     position_array = bezier.position(time_array, expand=True)
     velocity_array = bezier.velocity(time_array, expand=True)
+    acc_array = bezier.acc(time_array, expand=True)
 
     plt.subplots(1)
     plt.plot(bezier.point_array[0,:]+bezier.x0, bezier.point_array[1,:]+bezier.y0, 'or')
@@ -111,5 +115,9 @@ if __name__ == "__main__":
     plt.plot(time_array, velocity_array[0,:], 'or')
     plt.subplots(1)
     plt.plot(time_array, velocity_array[1,:], 'or')
+    plt.subplots(1)
+    plt.plot(time_array, acc_array[0,:], 'or')
+    plt.subplots(1)
+    plt.plot(time_array, acc_array[1,:], 'or')
 
     plt.show()

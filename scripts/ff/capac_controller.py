@@ -7,15 +7,15 @@ import carla
 class Param(object):
     def __init__(self):
         '''vehicle'''
-        self.L = 2.875
+        self.L = 2.405
         self.max_acceleration = 1.0
         self.min_acceleration = -1.0
         self.max_steer = 1.0
 
         '''PID'''
-        self.v_pid_Kp = 1.00
+        self.v_pid_Kp = 1.00#1.00
         self.v_pid_Ki = 0.00
-        self.v_pid_Kd = 0.05
+        self.v_pid_Kd = 0.00
 
         '''RWPF'''
         self.k_k = 1.235
@@ -27,9 +27,10 @@ class Param(object):
 
 
 class CapacController(object):
-    def __init__(self, vehicle, frequency):
+    def __init__(self, world, vehicle, frequency):
         '''parameter'''
         config = Param()
+        self.world = world
 
         self.vehicle = vehicle
 
@@ -51,25 +52,40 @@ class CapacController(object):
         self.k_k, self.k_theta, self.k_e = config.k_k, config.k_theta, config.k_e
     
 
-    def run_step(self, trajectory):
+    def run_step(self, trajectory, index, state0):
         '''
         Args:
             trajectory = {'time':plan_time, 'x':x, 'y':y, 'vx':vx, 'vy':vy, 'ax':ax, 'ay':ay, 'a':a}
         '''
+        #print(trajectory)
         time_stamp = time.time()
         current_state = cu.getActorState('odom', time_stamp, self.vehicle)
+        current_state = current_state.world_to_local_2D(state0, 'base_link')
 
-        x, y, vx, vy = trajectory['x'], trajectory['y'], trajectory['vx'],  trajectory['vy']
-        ax, ay = trajectory['ax'], trajectory['ay']
-        a, t = trajectory['a'], trajectory['time']
+        x, y, vx, vy = trajectory['x'][index], trajectory['y'][index], trajectory['vx'][index],  trajectory['vy'][index]
+        ax, ay = trajectory['ax'][index], trajectory['ay'][index]
+        a, t = trajectory['a'][index], trajectory['time']
         theta, v = np.arctan2(vy, vx), np.hypot(vx, vy)
         k = (vx*ay-vy*ax)/(v**3)
-        target_state = cu.State('odom', time_stamp, x=x, y=y, theta=theta, v=v, a=a, k=k, t=t)
-
+        target_state = cu.State('base_link', time_stamp, x=x, y=y, theta=theta, v=v, a=a, k=k, t=t)
+        target_state.y = target_state.y-0.2
         throttle, brake = self.pid(current_state, target_state)
         target_state.k = k * self.curvature_factor
         steer = self.rwpf(current_state, target_state)
-
+        
+        
+        #carla.Location(x=state0.x+x, )
+        global_target = target_state.local_to_world_2D(state0, 'odom')
+        localtion = carla.Location(x = global_target.x, y=global_target.y, z=2.0)
+        self.world.debug.draw_point(localtion, size=0.3, color=carla.Color(255,0,0), life_time=10.0)
+        # throttle, brake = 1, 0
+        throttle += 0.7
+        
+        #if throttle > 0 and abs(global_vel) < 0.8 and abs(v_r) < 1.0:
+        if throttle > 0 and abs(current_state.v) < 0.8 and abs(target_state.v) < 1.2:
+            throttle = 0.
+            brake = 1.
+        
         return carla.VehicleControl(throttle=throttle, brake=brake, steer=steer)
     
 
@@ -90,6 +106,8 @@ class CapacController(object):
 
         throttle = np.clip(acceleration, 0, self.max_a)
         brake = -np.clip(acceleration, self.min_a, 0)
+        
+        # print(v_target, v_current, '    ', throttle, brake)
         return throttle, brake
 
 
@@ -113,11 +131,13 @@ class CapacController(object):
         w2 = - self.k_theta * np.fabs(vr)*theta_e
         w3 = (self.k_e*vr*np.exp(-theta_e**2/alpha))*e
         w = w1+w2+w3
-
-        if current_state.v < 1.001:
+        #print(dx, dy, current_state.theta, xr, yr, thetar)
+        if current_state.v < 0.02:
             steer = 0
         else:
             steer = np.arctan2(w*self.L, current_state.v) * 2 / np.pi * self.max_steer
+        
+        #print(w, steer)
 
         return steer
 

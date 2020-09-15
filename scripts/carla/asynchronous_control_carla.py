@@ -21,6 +21,8 @@ from utils import fig2data, add_alpha_channel
 from ff_collect_pm_data import sensor_dict
 from ff.collect_ipm import InversePerspectiveMapping
 from ff.carla_sensor import Sensor, CarlaSensorMaster
+from ff.capac_controller import CapacController
+import carla_utils as cu
 
 import os
 import cv2
@@ -54,6 +56,7 @@ global_transform = None
 max_steer_angle = 0.
 draw_cost_map = None
 global_view_img = None
+state0 = None
 global_ipm_image = np.zeros((200,400), dtype=np.uint8)
 global_ipm_image.fill(255)
 
@@ -76,7 +79,7 @@ generator = generator.to(device)
 #generator.load_state_dict(torch.load('../../ckpt/sim-obs/g.pth'))
 generator.load_state_dict(torch.load('result/saved_models/cgan-human-data-04/g_74000.pth'))
 model = ModelGRU().to(device)
-model.load_state_dict(torch.load('result/saved_models/mu-log_var-06/model_382000.pth'))
+model.load_state_dict(torch.load('result/saved_models/mu-log_var-06/model_364000.pth'))
 generator.eval()
 model.eval()
 
@@ -140,7 +143,7 @@ def get_cost_map(img, point_cloud):
     kernel = np.ones((17,17),np.uint8)  
     img2 = cv2.erode(img2,kernel,iterations = 1)
     
-    kernel_size = (3, 3)
+    kernel_size = (17, 17)
     img = cv2.dilate(img,kernel_size,iterations = 3)
     
     img = cv2.addWeighted(img,0.5,img2,0.5,0)
@@ -221,7 +224,7 @@ def visualize(img, costmap, nav, curve=None):
         show_img = np.hstack([show_img, left_img])
     cv2.imshow('Visualization', show_img)
     if args.save: cv2.imwrite('result/images/img02/'+str(cnt)+'.png', show_img)
-    cv2.waitKey(10)
+    cv2.waitKey(5)
     cnt += 1
 
 def draw_traj(cost_map, output):
@@ -267,8 +270,13 @@ def get_costmap_stack():
         
     
 def get_traj(plan_time):
-    global global_v0, draw_cost_map
-
+    global global_v0, draw_cost_map, state0, global_vehicle
+    state0 = cu.getActorState('odom', plan_time, global_vehicle)
+    state0.x = global_transform.location.x
+    state0.y = global_transform.location.y
+    state0.z = global_transform.location.z
+    state0.theta = np.deg2rad(global_transform.rotation.yaw)
+    
     t = torch.arange(0, 0.99, args.dt).unsqueeze(1).to(device)
     t.requires_grad = True
 
@@ -311,7 +319,10 @@ def get_traj(plan_time):
     ay = ay.data.cpu().numpy()
     a = a.data.cpu().numpy()
     log_var = log_var.data.cpu().numpy()
-    var = np.sqrt(np.exp(log_var))
+    #var = np.sqrt(np.exp(log_var))
+    
+    #state0 = cu.getActorState('odom', plan_time, global_vehicle)
+    time.sleep(0.1)
     trajectory = {'time':plan_time, 'x':x, 'y':y, 'vx':vx, 'vy':vy, 'ax':ax, 'ay':ay, 'a':a}
     return trajectory
 
@@ -371,8 +382,8 @@ def get_control(x, y, vx, vy, ax, ay):
     Kx = 0.3
     Kv = 3.0*1.5
     
-    Ky = 9.2e-3
-    K_theta = 0.12
+    Ky = 5.0e-3
+    K_theta = 0.10
     
     control = carla.VehicleControl()
     control.manual_gear_shift = True
@@ -403,6 +414,10 @@ def get_control(x, y, vx, vy, ax, ay):
     #throttle = 0.7 +(Kx*x_e + Kv*v_e)*0.06
     #throttle = Kx*x_e + Kv*v_e+0.5
     throttle = Kx*x_e + Kv*v_e + global_a
+    # MAGIC !
+    #if throttle > 0 and abs(global_vel) < 0.8 and abs(v_r) < 1.0:
+    if throttle > 0 and abs(global_vel) < 0.8 and abs(v_r) < 1.2:
+        throttle = -1
     
     control.brake = 0.0
     if throttle > 0:
@@ -453,7 +468,7 @@ def show_traj(save=False):
     
     
 def main():
-    global global_nav, global_vel, start_control, global_plan_map, global_vehicle, global_cost_map, global_transform, max_steer_angle, global_a, draw_cost_map
+    global global_nav, global_vel, start_control, global_plan_map, global_vehicle, global_cost_map, global_transform, max_steer_angle, global_a, draw_cost_map, state0
     client = carla.Client(config['host'], config['port'])
     client.set_timeout(config['timeout'])
     
@@ -478,7 +493,6 @@ def main():
     vehicle.set_simulate_physics(True)
     physics_control = vehicle.get_physics_control()
     max_steer_angle = np.deg2rad(physics_control.wheels[0].max_steer_angle)
-    
     sensor_dict = {
         'camera':{
             'transform':carla.Transform(carla.Location(x=0.5, y=0.0, z=2.5)),
@@ -486,7 +500,8 @@ def main():
             },
         'camera:view':{
             #'transform':carla.Transform(carla.Location(x=0.0, y=4.0, z=4.0), carla.Rotation(pitch=-30, yaw=-60)),
-            'transform':carla.Transform(carla.Location(x=-3.0, y=0.0, z=6.0), carla.Rotation(pitch=-45)),
+            #'transform':carla.Transform(carla.Location(x=-3.0, y=0.0, z=6.0), carla.Rotation(pitch=-45)),
+            'transform':carla.Transform(carla.Location(x=0.0, y=0.0, z=6.0), carla.Rotation(pitch=-90)),
             'callback':view_image_callback,
             },
         'lidar':{
@@ -528,9 +543,9 @@ def main():
     #visualization_thread.start()
     # start to control
     print('Start to control')
-    avg_dt = 1.0
-    distance = 0.
-    last_location = vehicle.get_location()
+    avg_dt = 0.05
+    
+    ctrller = CapacController(world, vehicle, 30)
     while True:
         # change destination
         if close2dest(vehicle, destination):
@@ -548,18 +563,15 @@ def main():
         
         control_time = time.time()
         dt = control_time - global_trajectory['time']
+        #print(dt)
         avg_dt = 0.99*avg_dt + 0.01*dt
         #print(round(avg_dt, 3))
         index = int((dt/args.max_t)//args.dt)
         if index > 0.99/args.dt:
             continue
-        
-        location = vehicle.get_location()
-        distance += location.distance(last_location)
-        last_location = location
-        #print(round(distance, 1))
-        
+               
         transform = vehicle.get_transform()
+        
         dx, dy, dyaw = get_transform(transform, global_transform)
         dyaw = -dyaw
         
@@ -578,8 +590,16 @@ def main():
         ax = _ax*np.cos(dyaw) + _ay*np.sin(dyaw)
         ay = _ay*np.cos(dyaw) - _ax*np.sin(dyaw)
         
-        control = get_control(x, y, vx, vy, ax, ay)
+        #control = get_control(x, y, vx, vy, ax, ay)
+        control = ctrller.run_step(global_trajectory, index, state0)
         vehicle.apply_control(control)
+        
+        dyaw = np.deg2rad(global_transform.rotation.yaw)
+        x = global_trajectory['x'][index]*np.cos(dyaw) + global_trajectory['y'][index]*np.sin(dyaw)
+        y = global_trajectory['y'][index]*np.cos(dyaw) - global_trajectory['x'][index]*np.sin(dyaw)
+        
+        #localtion = carla.Location(x = global_transform.location.x+x, y=global_transform.location.y+y, z=2.0)
+        #world.debug.draw_point(localtion, size=0.3, color=carla.Color(255,0,0), life_time=10.0)
         
         #print(global_vel*np.tan(control.steer)/w)
         
