@@ -19,6 +19,15 @@ def add_camera(world, blueprint, vehicle, transform):
     camera = world.spawn_actor(camera_bp, transform, attach_to=vehicle)
     return camera
 
+def add_semantic(world, blueprint, vehicle, transform):
+    semantic_bp = blueprint.find('sensor.camera.semantic_segmentation')
+    semantic_bp.set_attribute('image_size_x', str(config['camera']['img_length']))
+    semantic_bp.set_attribute('image_size_y', str(config['camera']['img_width']))
+    semantic_bp.set_attribute('fov', str(config['camera']['fov']))
+    semantic_bp.set_attribute('sensor_tick', str(1./config['camera']['fps']))
+    semantic = world.spawn_actor(semantic_bp, transform, attach_to=vehicle)
+    return semantic
+
 def add_lidar(world, blueprint, vehicle, transform):
     lidar_bp = blueprint.find('sensor.lidar.ray_cast')
     lidar_bp.set_attribute('channels', str(config['lidar']['channels']))
@@ -51,7 +60,7 @@ class SensorManager(Singleton):
         self.param_dict = param_dict
         self.sensor_dict = {}
 
-        self.known_sensors = ['camera', 'lidar', 'imu', 'gnss']
+        self.known_sensors = ['camera', 'lidar', 'imu', 'gnss', 'semantic']
 
     def init(self, key):
         if key in self.param_dict:
@@ -70,10 +79,11 @@ class SensorManager(Singleton):
 
     def init_all(self):
         for key in self.param_dict:
-            try:
-                self.init(key)
-            except:
-                debug(info=str(key)+' initialize failed', info_type='error')
+            # try:
+            #     self.init(key)
+            self.init(key)
+            # except:
+            #     debug(info=str(key)+' initialize failed', info_type='error')
 
     def close_all(self):
         for key in self.param_dict:
