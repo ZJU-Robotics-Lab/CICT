@@ -34,7 +34,7 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--test_mode', type=bool, default=True, help='test model switch')
-parser.add_argument('--dataset_name', type=str, default="test-gru-01", help='name of the dataset')
+parser.add_argument('--dataset_name', type=str, default="test-gru-02", help='name of the dataset')
 parser.add_argument('--width', type=int, default=400, help='image width')
 parser.add_argument('--height', type=int, default=200, help='image height')
 parser.add_argument('--scale', type=float, default=25., help='longitudinal length')
@@ -58,7 +58,7 @@ global_trajectory = None
 global_trajectory_real = None
     
 model = ModelGRU().to(device)
-model.load_state_dict(torch.load('result/saved_models/mu-log_var-05/model_278000.pth'))
+model.load_state_dict(torch.load('result/saved_models/mu-log_var-06/model_364000.pth'))
 model.eval()
 
 eval_loader = DataLoader(CostMapDataset(data_index=[1,2,3,4,5,6,7], opt=opt, dataset_path='/media/wang/DATASET/CARLA_HUMAN/town01/', evalmode=True), batch_size=1, shuffle=False, num_workers=1)
@@ -99,8 +99,8 @@ def show_traj(step):
     ax1.set_ylim([-max_y, max_y])
     plt.legend(loc='lower right')
     
-    t = max_speed*np.arange(0, 1.0, 1./x.shape[0])
-    real_t = max_speed*global_trajectory_real['ts_list']
+    t = max_x*np.arange(0, 1.0, 1./x.shape[0])
+    real_t = max_x*global_trajectory_real['ts_list']
     a = trajectory['a']
     vx = trajectory['vx']
     vy = trajectory['vy']
@@ -116,8 +116,10 @@ def show_traj(step):
     #ax2.plot(t, a, label='acc', color = 'y', linewidth=2)
     #ax2.plot(t, angle, label='angle', color = 'g', linewidth=2)
     # real
-    ax2.plot(real_t, real_v, label='real-speed', color = 'r', linewidth=2, linestyle='--')
-    ax2.plot(real_t, real_a, label='real-acc', color = 'y', linewidth=2, linestyle='--')
+    #ax2.plot(real_t, real_v, label='real-speed', color = 'r', linewidth=2, linestyle='--')
+    ax2.plot(real_t, real_vx, label='real-vx', color = 'b', linewidth=2, linestyle='--')
+    ax2.plot(real_t, real_vy, label='real-vy', color = 'r', linewidth=2, linestyle='--')
+    #ax2.plot(real_t, real_a, label='real-acc', color = 'y', linewidth=2, linestyle='--')
     ax2.plot(real_t, real_angle, label='real-angle', color = 'g', linewidth=2, linestyle='--')
     
     ax2.set_ylabel('Velocity/(m/s)')

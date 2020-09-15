@@ -45,7 +45,6 @@ def mkdir(path):
 
 mkdir('')
 mkdir('img/')  
-mkdir('img/')
 mkdir('pcd/')
 mkdir('nav/')
 mkdir('state/')
