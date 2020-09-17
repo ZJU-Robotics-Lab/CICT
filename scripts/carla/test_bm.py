@@ -57,6 +57,8 @@ max_steer_angle = 0.
 draw_cost_map = None
 global_view_img = None
 state0 = None
+global_collision = False
+last_collision_time = time.time()
 global_ipm_image = np.zeros((200,400), dtype=np.uint8)
 global_ipm_image.fill(255)
 
@@ -122,6 +124,26 @@ param = Param()
 sensor = Sensor(sensor_dict['camera']['transform'], config['camera'])
 sensor_master = CarlaSensorMaster(sensor, sensor_dict['camera']['transform'], binded=True)
 inverse_perspective_mapping = InversePerspectiveMapping(param, sensor_master)
+
+def read(file_path, town_map):
+    poses = []
+    file = open(file_path)
+    while True:
+        line = file.readline()
+        if not line:
+            break
+        if line == '\n':
+            continue
+
+        line_list = line.split(',')
+        start_x, start_y = eval(line_list[0]), eval(line_list[1])
+        end_x, end_y = eval(line_list[2]), eval(line_list[3])
+
+        start_transform = town_map.get_waypoint(carla.Location(x=start_x, y=start_y)).transform
+        end_transform = town_map.get_waypoint(carla.Location(x=end_x, y=end_y)).transform
+        poses.append([start_transform, end_transform])
+    file.close()
+    return poses
 
 def get_cost_map(img, point_cloud):
     img2 = np.zeros((args.height, args.width), np.uint8)
@@ -194,6 +216,12 @@ def lidar_callback(data):
     global_pcd = point_cloud
     generate_costmap(ts)
 
+def collision_callback(data):
+    global global_collision
+    if global_collision: return
+    global_collision = True
+    print(data)
+    
 def get_cGAN_result(img, nav):
     img = Image.fromarray(cv2.cvtColor(img,cv2.COLOR_BGR2RGB))
     nav = Image.fromarray(cv2.cvtColor(nav,cv2.COLOR_BGR2RGB))
@@ -320,9 +348,8 @@ def get_traj(plan_time):
     a = a.data.cpu().numpy()
     log_var = log_var.data.cpu().numpy()
     #var = np.sqrt(np.exp(log_var))
-    
+    #time.sleep(0.05)
     #state0 = cu.getActorState('odom', plan_time, global_vehicle)
-    time.sleep(0.1)
     trajectory = {'time':plan_time, 'x':x, 'y':y, 'vx':vx, 'vy':vy, 'ax':ax, 'ay':ay, 'a':a}
     return trajectory
 
@@ -350,9 +377,11 @@ def make_plan():
         img = copy.deepcopy(global_img)
         mask = np.where(result > 200)
         img[mask[0],mask[1]] = (255, 0, 0, 255)
-        
-        ipm_image = inverse_perspective_mapping.getIPM(result)
-        global_ipm_image = ipm_image
+        try:
+            ipm_image = inverse_perspective_mapping.getIPM(result)
+            global_ipm_image = ipm_image
+        except:
+            pass
 
         # 3. get trajectory
         #time.sleep(0.1)
@@ -466,14 +495,13 @@ def show_traj(save=False):
             plt.close('all')
             return image
     
-    
 def main():
-    global global_nav, global_vel, start_control, global_plan_map, global_vehicle, global_cost_map, global_transform, max_steer_angle, global_a, draw_cost_map, state0
+    global global_nav, global_vel, start_control, global_plan_map, global_vehicle, global_cost_map, global_transform, max_steer_angle, global_a, draw_cost_map, state0, global_collision, last_collision_time
     client = carla.Client(config['host'], config['port'])
     client.set_timeout(config['timeout'])
     
     world = client.load_world('Town01')
-
+    """
     weather = carla.WeatherParameters(
         cloudiness=random.randint(0,10),
         precipitation=0,
@@ -481,6 +509,8 @@ def main():
     )
     
     set_weather(world, weather)
+    """
+    world.set_weather(carla.WeatherParameters.ClearNoon)
     
     blueprint = world.get_blueprint_library()
     world_map = world.get_map()
@@ -500,13 +530,17 @@ def main():
             },
         'camera:view':{
             #'transform':carla.Transform(carla.Location(x=0.0, y=4.0, z=4.0), carla.Rotation(pitch=-30, yaw=-60)),
-            'transform':carla.Transform(carla.Location(x=-3.0, y=0.0, z=6.0), carla.Rotation(pitch=-45)),
-            #'transform':carla.Transform(carla.Location(x=0.0, y=0.0, z=6.0), carla.Rotation(pitch=-90)),
+            #'transform':carla.Transform(carla.Location(x=-3.0, y=0.0, z=6.0), carla.Rotation(pitch=-45)),
+            'transform':carla.Transform(carla.Location(x=4.0, y=0.0, z=10.0), carla.Rotation(pitch=-90)),
             'callback':view_image_callback,
             },
         'lidar':{
             'transform':carla.Transform(carla.Location(x=0.5, y=0.0, z=2.5)),
             'callback':lidar_callback,
+            },
+        'collision':{
+            'transform':carla.Transform(carla.Location(x=0.5, y=0.0, z=2.5)),
+            'callback':collision_callback,
             },
         }
 
@@ -519,16 +553,25 @@ def main():
 
     agent = BasicAgent(vehicle, target_speed=MAX_SPEED)
     
+    poses = read('Town01/navigation_with_dynamic_obstacles.csv', world_map)
     # prepare map
-    destination = carla.Transform()
-    destination.location = world.get_random_location_from_navigation()
-    #destination = get_random_destination(spawn_points)
-    global_plan_map = replan(agent, destination, copy.deepcopy(origin_map))
+    #destination = carla.Transform()
+    #destination.location = world.get_random_location_from_navigation()
+    #global_plan_map = replan(agent, destination, copy.deepcopy(origin_map))
+    
 
+    total_eps = 1#13#21
+    success_eps = total_eps-1#0
+    task = random.sample(poses, 1)[0]
+    #task = poses[total_eps-1]#poses[0]
+    vehicle.set_transform(task[0])
+    destination = task[1]
+    global_plan_map = replan(agent, destination, copy.deepcopy(origin_map))
+    
     # start to plan
     plan_thread = threading.Thread(target = make_plan, args=())
-    visualization_thread = threading.Thread(target = show_traj, args=())
-
+    #visualization_thread = threading.Thread(target = show_traj, args=())
+    
     while True:
         if (global_img is not None) and (global_nav is not None) and (global_pcd is not None):
             plan_thread.start()
@@ -545,14 +588,40 @@ def main():
     print('Start to control')
     
     ctrller = CapacController(world, vehicle, 30)
+
     while True:
         # change destination
-        if close2dest(vehicle, destination):
-            #destination = get_random_destination(spawn_points)
-            print('get destination !', time.time())
-            destination = carla.Transform()
-            destination.location = world.get_random_location_from_navigation()
-            global_plan_map = replan(agent, destination, copy.deepcopy(origin_map)) 
+        if close2dest(vehicle, destination, 8) or global_collision:
+            if global_collision:
+                collision_time = time.time()
+                if collision_time - last_collision_time < 10:
+                    total_eps -= 1
+                last_collision_time = collision_time
+                global_collision = False
+                cv2.imwrite('result/collision/'+str(time.time())+'.png', global_view_img)
+            else:
+                success_eps += 1
+            
+            print(time.time(), 'ID:',total_eps, round(100*success_eps/total_eps, 2), '%  ', success_eps,'/',total_eps)
+            total_eps += 1
+            
+            #task = random.sample(poses, 1)[0]
+            if total_eps >= len(poses):
+                break
+            #task = poses[total_eps]
+            while True:
+                task = random.sample(poses, 1)[0]
+                vehicle.set_transform(task[0])
+                time.sleep(0.1)
+                print(vehicle.get_location().z)
+                if abs(vehicle.get_location().z) > 3:
+                    continue
+                else:
+                    destination = task[1]
+                    global_plan_map = replan(agent, destination, copy.deepcopy(origin_map))
+                    break
+            global_collision = False
+                
 
         v = global_vehicle.get_velocity()
         a = global_vehicle.get_acceleration()
@@ -563,7 +632,9 @@ def main():
         
         control_time = time.time()
         dt = control_time - global_trajectory['time']
+
         index = int((dt/args.max_t)//args.dt)
+        index += 3
         if index > 0.99/args.dt:
             continue
         

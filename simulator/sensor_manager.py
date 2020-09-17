@@ -52,6 +52,11 @@ def add_gnss(world, blueprint, vehicle, transform):
     gnss = world.spawn_actor(gnss_bp, transform, attach_to=vehicle)
     return gnss
 
+def add_collision(world, blueprint, vehicle, transform):
+    collision_bp = blueprint.find('sensor.other.collision')
+    collision = world.spawn_actor(collision_bp, transform, attach_to=vehicle)
+    return collision
+
 class SensorManager(Singleton):
     def __init__(self, world, blueprint, vehicle, param_dict):
         self.world = world
@@ -60,7 +65,7 @@ class SensorManager(Singleton):
         self.param_dict = param_dict
         self.sensor_dict = {}
 
-        self.known_sensors = ['camera', 'lidar', 'imu', 'gnss', 'semantic']
+        self.known_sensors = ['camera', 'lidar', 'imu', 'gnss', 'semantic', 'collision']
 
     def init(self, key):
         if key in self.param_dict:
@@ -79,11 +84,10 @@ class SensorManager(Singleton):
 
     def init_all(self):
         for key in self.param_dict:
-            # try:
-            #     self.init(key)
-            self.init(key)
-            # except:
-            #     debug(info=str(key)+' initialize failed', info_type='error')
+            try:
+                self.init(key)
+            except:
+                debug(info=str(key)+' initialize failed', info_type='error')
 
     def close_all(self):
         for key in self.param_dict:

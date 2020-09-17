@@ -20,7 +20,7 @@ class Param(object):
         '''RWPF'''
         self.k_k = 1.235
         self.k_theta = 0.456
-        self.k_e = 0.1386
+        self.k_e = 0.11#0.1386
 
         '''debug'''
         self.curvature_factor = 1.0
@@ -69,23 +69,28 @@ class CapacController(object):
         k = (vx*ay-vy*ax)/(v**3)
         target_state = cu.State('base_link', time_stamp, x=x, y=y, theta=theta, v=v, a=a, k=k, t=t)
         target_state.y = target_state.y-0.2
+        
+        steer = self.rwpf(current_state, target_state)
+        #org_tv = target_state.v
+        target_state.v = target_state.v/(1+0.6*abs(steer))
         throttle, brake = self.pid(current_state, target_state)
         target_state.k = k * self.curvature_factor
-        steer = self.rwpf(current_state, target_state)
         
-        
-        #carla.Location(x=state0.x+x, )
+        # debug
         global_target = target_state.local_to_world_2D(state0, 'odom')
         localtion = carla.Location(x = global_target.x, y=global_target.y, z=2.0)
-        self.world.debug.draw_point(localtion, size=0.3, color=carla.Color(255,0,0), life_time=10.0)
+        self.world.debug.draw_point(localtion, size=0.2, color=carla.Color(255,0,0), life_time=5.0)
         # throttle, brake = 1, 0
         throttle += 0.7
+        throttle = np.clip(throttle, 0., 1.)
+        #throttle = throttle/(1+abs(steer))
         
         #if throttle > 0 and abs(global_vel) < 0.8 and abs(v_r) < 1.0:
-        if throttle > 0 and abs(current_state.v) < 0.8 and abs(target_state.v) < 1.2:
+        if throttle > 0 and abs(current_state.v) < 1.0 and abs(target_state.v) < 1.0:
             throttle = 0.
             brake = 1.
-        
+            steer = 0.
+
         return carla.VehicleControl(throttle=throttle, brake=brake, steer=steer)
     
 
@@ -130,7 +135,7 @@ class CapacController(object):
         w1 = self.k_k * vr*kr*np.cos(theta_e)
         w2 = - self.k_theta * np.fabs(vr)*theta_e
         w3 = (self.k_e*vr*np.exp(-theta_e**2/alpha))*e
-        w = w1+w2+w3
+        w = (w1+w2+w3)*0.8
         #print(dx, dy, current_state.theta, xr, yr, thetar)
         if current_state.v < 0.02:
             steer = 0
