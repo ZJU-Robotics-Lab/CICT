@@ -87,6 +87,7 @@ model.eval()
 
 parser = argparse.ArgumentParser(description='Params')
 parser.add_argument('-d', '--data', type=int, default=1, help='data index')
+parser.add_argument('-t', '--town', type=int, default=1, help='twon index')
 parser.add_argument('-s', '--save', type=bool, default=False, help='save result')
 parser.add_argument('--width', type=int, default=400, help='image width')
 parser.add_argument('--height', type=int, default=200, help='image height')
@@ -165,7 +166,7 @@ def get_cost_map(img, point_cloud):
     kernel = np.ones((17,17),np.uint8)  
     img2 = cv2.erode(img2,kernel,iterations = 1)
     
-    kernel_size = (17, 17)
+    kernel_size = (21, 21)
     img = cv2.dilate(img,kernel_size,iterations = 3)
     
     img = cv2.addWeighted(img,0.5,img2,0.5,0)
@@ -211,7 +212,8 @@ def lidar_callback(data):
     ts = time.time()
     lidar_data = np.frombuffer(data.raw_data, dtype=np.float32).reshape([-1, 3])
     point_cloud = np.stack([-lidar_data[:,1], -lidar_data[:,0], -lidar_data[:,2]])
-    mask = np.where(point_cloud[2] > -2.3)[0]
+    #mask = np.where((point_cloud[2] > -2.3) & (point_cloud[2] < -1))[0]
+    mask = np.where((point_cloud[2] > -2.3))[0]
     point_cloud = point_cloud[:, mask]
     global_pcd = point_cloud
     generate_costmap(ts)
@@ -237,6 +239,7 @@ def get_cGAN_result(img, nav):
 cnt = 0
 def visualize(img, costmap, nav, curve=None):
     global global_vel, cnt
+    #if cnt % 3 == 0: cv2.imwrite('result/images/result4/'+str(cnt)+'.png', img)
     #costmap = cv2.cvtColor(costmap,cv2.COLOR_GRAY2RGB)
     text = "speed: "+str(round(3.6*global_vel, 1))+' km/h'
     cv2.putText(img, text, (20, 30), cv2.FONT_HERSHEY_PLAIN, 2.0, (255, 255, 255), 2)
@@ -500,7 +503,10 @@ def main():
     client = carla.Client(config['host'], config['port'])
     client.set_timeout(config['timeout'])
     
-    world = client.load_world('Town01')
+    town = 'Town0'+str(args.town)
+    world = client.load_world(town)
+    world_map = world.get_map()
+    poses = read(town+'/navigation_with_dynamic_obstacles.csv', world_map)
     """
     weather = carla.WeatherParameters(
         cloudiness=random.randint(0,10),
@@ -513,7 +519,6 @@ def main():
     world.set_weather(carla.WeatherParameters.ClearNoon)
     
     blueprint = world.get_blueprint_library()
-    world_map = world.get_map()
     
     vehicle = add_vehicle(world, blueprint, vehicle_type='vehicle.audi.a2')
     #vehicle = add_vehicle(world, blueprint, vehicle_type='vehicle.yamaha.yzf')
@@ -530,8 +535,8 @@ def main():
             },
         'camera:view':{
             #'transform':carla.Transform(carla.Location(x=0.0, y=4.0, z=4.0), carla.Rotation(pitch=-30, yaw=-60)),
-            #'transform':carla.Transform(carla.Location(x=-3.0, y=0.0, z=6.0), carla.Rotation(pitch=-45)),
-            'transform':carla.Transform(carla.Location(x=4.0, y=0.0, z=10.0), carla.Rotation(pitch=-90)),
+            'transform':carla.Transform(carla.Location(x=-3.0, y=0.0, z=6.0), carla.Rotation(pitch=-45)),
+            #'transform':carla.Transform(carla.Location(x=4.0, y=0.0, z=10.0), carla.Rotation(pitch=-90)),
             'callback':view_image_callback,
             },
         'lidar':{
@@ -553,7 +558,6 @@ def main():
 
     agent = BasicAgent(vehicle, target_speed=MAX_SPEED)
     
-    poses = read('Town01/navigation_with_dynamic_obstacles.csv', world_map)
     # prepare map
     #destination = carla.Transform()
     #destination.location = world.get_random_location_from_navigation()
@@ -621,6 +625,7 @@ def main():
                     global_plan_map = replan(agent, destination, copy.deepcopy(origin_map))
                     break
             global_collision = False
+            last_collision_time = time.time()
                 
 
         v = global_vehicle.get_velocity()

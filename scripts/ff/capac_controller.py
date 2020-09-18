@@ -72,21 +72,21 @@ class CapacController(object):
         
         steer = self.rwpf(current_state, target_state)
         #org_tv = target_state.v
-        target_state.v = target_state.v/(1+0.6*abs(steer))
+        #target_state.v = target_state.v/(1+0.6*abs(steer))
         throttle, brake = self.pid(current_state, target_state)
         target_state.k = k * self.curvature_factor
         
         # debug
-        global_target = target_state.local_to_world_2D(state0, 'odom')
-        localtion = carla.Location(x = global_target.x, y=global_target.y, z=2.0)
-        self.world.debug.draw_point(localtion, size=0.2, color=carla.Color(255,0,0), life_time=5.0)
+        #global_target = target_state.local_to_world_2D(state0, 'odom')
+        #localtion = carla.Location(x = global_target.x, y=global_target.y, z=2.0)
+        #self.world.debug.draw_point(localtion, size=0.2, color=carla.Color(255,0,0), life_time=5.0)
         # throttle, brake = 1, 0
-        throttle += 0.7
+        throttle += 0.15
         throttle = np.clip(throttle, 0., 1.)
         #throttle = throttle/(1+abs(steer))
         
         #if throttle > 0 and abs(global_vel) < 0.8 and abs(v_r) < 1.0:
-        if throttle > 0 and abs(current_state.v) < 1.0 and abs(target_state.v) < 1.0:
+        if throttle > 0 and abs(current_state.v) < 1.2 and abs(target_state.v) < 1.2:
             throttle = 0.
             brake = 1.
             steer = 0.

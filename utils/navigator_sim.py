@@ -48,7 +48,13 @@ def draw_route(agent, destination, origin_map):
     draw.line(route_trace_list, 'red', width=30)
     return origin_map
 
-def get_nav(vehicle, plan_map):
+def get_nav(vehicle, plan_map, town=1):
+    if town == 1:
+        x_offset = 800
+        y_offset = 1000
+    elif town == 2:
+        x_offset = 1500
+        y_offset = 0
     x = int(scale*vehicle.get_location().x + x_offset)
     y = int(scale*vehicle.get_location().y + y_offset)
     _nav = plan_map.crop((x-400,y-400, x+400, y+400))

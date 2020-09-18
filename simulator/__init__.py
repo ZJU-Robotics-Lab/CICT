@@ -19,7 +19,7 @@ config = {
     'lidar':{
         'channels': 64,
         'rpm': 30,
-        'sensor_tick':0.1,
+        'sensor_tick':0.05,
         'pps': 100000,
         'range': 50,
         'lower_fov': -30,
