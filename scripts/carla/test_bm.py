@@ -72,8 +72,8 @@ img_width = 256
 longitudinal_length = 25.0 # [m]
 
 random.seed(datetime.now())
-torch.manual_seed(999)
-torch.cuda.manual_seed(999)
+torch.manual_seed(666)
+torch.cuda.manual_seed(666)
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 generator = GeneratorUNet()
@@ -87,7 +87,7 @@ model.eval()
 
 parser = argparse.ArgumentParser(description='Params')
 parser.add_argument('-d', '--data', type=int, default=1, help='data index')
-parser.add_argument('-t', '--town', type=int, default=1, help='twon index')
+parser.add_argument('-t', '--town', type=int, default=2, help='twon index')
 parser.add_argument('-s', '--save', type=bool, default=False, help='save result')
 parser.add_argument('--width', type=int, default=400, help='image width')
 parser.add_argument('--height', type=int, default=200, help='image height')
@@ -212,8 +212,11 @@ def lidar_callback(data):
     ts = time.time()
     lidar_data = np.frombuffer(data.raw_data, dtype=np.float32).reshape([-1, 3])
     point_cloud = np.stack([-lidar_data[:,1], -lidar_data[:,0], -lidar_data[:,2]])
-    #mask = np.where((point_cloud[2] > -2.3) & (point_cloud[2] < -1))[0]
-    mask = np.where((point_cloud[2] > -2.3))[0]
+    location = global_vehicle.get_location()
+    if np.sqrt((location.x-84.532265)**2+(location.y-105.279831)**2) < 10:
+        mask = np.where((point_cloud[2] > -2.3) & (point_cloud[2] < -1.0))[0]
+    #if args.town == 2: mask = np.where((point_cloud[2] > -2.3) & (point_cloud[2] < -0.85))[0]
+    else: mask = np.where((point_cloud[2] > -2.3))[0]
     point_cloud = point_cloud[:, mask]
     global_pcd = point_cloud
     generate_costmap(ts)
@@ -388,7 +391,10 @@ def make_plan():
 
         # 3. get trajectory
         #time.sleep(0.1)
-        global_trajectory = get_traj(plan_time)
+        try:
+            global_trajectory = get_traj(plan_time)
+        except:
+            pass
 
         if not start_control:
             start_control = True
@@ -516,7 +522,13 @@ def main():
     
     set_weather(world, weather)
     """
-    world.set_weather(carla.WeatherParameters.ClearNoon)
+    #world.set_weather(carla.WeatherParameters.ClearNoon)
+    # [1, 3, 6, 8] for training
+    train_weather = random.sample([carla.WeatherParameters.ClearNoon, carla.WeatherParameters.WetNoon, carla.WeatherParameters.HardRainNoon, carla.WeatherParameters.ClearSunset], 1)[0]
+    test_weather = random.sample([carla.WeatherParameters.WetSunset,carla.WeatherParameters.SoftRainSunset], 1)[0]
+    #world.set_weather(carla.WeatherParameters.HardRainSunset)
+    weather = train_weather if args.town == 1 else test_weather
+    world.set_weather(weather)
     
     blueprint = world.get_blueprint_library()
     
@@ -596,9 +608,14 @@ def main():
     while True:
         # change destination
         if close2dest(vehicle, destination, 8) or global_collision:
+            train_weather = random.sample([carla.WeatherParameters.ClearNoon, carla.WeatherParameters.WetNoon, carla.WeatherParameters.HardRainNoon, carla.WeatherParameters.ClearSunset], 1)[0]
+            test_weather = random.sample([carla.WeatherParameters.WetSunset,carla.WeatherParameters.SoftRainSunset], 1)[0]
+            weather = train_weather if args.town == 1 else test_weather
+            world.set_weather(weather)
+    
             if global_collision:
                 collision_time = time.time()
-                if collision_time - last_collision_time < 10:
+                if collision_time - last_collision_time < 4:
                     total_eps -= 1
                 last_collision_time = collision_time
                 global_collision = False
@@ -617,7 +634,6 @@ def main():
                 task = random.sample(poses, 1)[0]
                 vehicle.set_transform(task[0])
                 time.sleep(0.1)
-                print(vehicle.get_location().z)
                 if abs(vehicle.get_location().z) > 3:
                     continue
                 else:
@@ -679,7 +695,6 @@ def main():
         
         curve = None#show_traj(True)
         visualize(global_view_img, draw_cost_map, global_nav, curve)
-        
         #time.sleep(1/60.)
 
     cv2.destroyAllWindows()
