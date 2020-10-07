@@ -217,7 +217,7 @@ class ModelGRU(nn.Module):
         self.gru = nn.GRU(
             input_size = self.cnn_feature_dim, 
             hidden_size = self.rnn_hidden_dim, 
-            num_layers = 2,
+            num_layers = 3,
             batch_first=True,
             dropout=0.2)
         self.mlp = MLP_COS(input_dim=self.rnn_hidden_dim+2)
@@ -249,6 +249,32 @@ class CNNFC(nn.Module):
         x = x.view(batch_size * timesteps, C, H, W)
         x = self.cnn(x)
         x = x.view(batch_size, -1)
+        x = self.mlp(x)
+        return x
+    
+class CNNLSTM(nn.Module):
+    def __init__(self, hidden_dim=256):
+        super(CNNLSTM, self).__init__()
+        self.cnn_feature_dim = hidden_dim
+        self.rnn_hidden_dim = hidden_dim
+        self.cnn = CNN(input_dim=1, out_dim=self.cnn_feature_dim)
+        self.lstm = nn.LSTM(
+            input_size = self.cnn_feature_dim, 
+            hidden_size = self.rnn_hidden_dim, 
+            num_layers = 3,
+            batch_first=True,
+            dropout=0.2)
+        self.mlp = FC(input_dim=self.rnn_hidden_dim, output_dim=10*4)
+
+    def forward(self, x):
+        batch_size, timesteps, C, H, W = x.size()
+        
+        x = x.view(batch_size * timesteps, C, H, W)
+        x = self.cnn(x)
+        
+        x = x.view(batch_size, timesteps, -1)
+        x, _ = self.lstm(x)
+        x = F.leaky_relu(x[:, -1, :])
         x = self.mlp(x)
         return x
     

@@ -21,7 +21,7 @@ from torch.autograd import grad
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
-from learning.path_model import CNNFC
+from learning.path_model import CNNLSTM
 from utils import write_params, fig2data
 
 import carla_utils as cu
@@ -67,7 +67,7 @@ if not opt.test_mode:
     logger = SummaryWriter(log_dir=log_path)
     write_params(log_path, parser, description)
     
-model = CNNFC(256).to(device)
+model = CNNLSTM(256).to(device)
 #model.load_state_dict(torch.load('result/saved_models/kitti-01/model_74000.pth'))
 criterion = torch.nn.MSELoss().to(device)
 optimizer = torch.optim.Adam(model.parameters(), lr=opt.lr, weight_decay=opt.weight_decay)
