@@ -3,6 +3,7 @@
 import sys
 from os.path import join, dirname
 sys.path.insert(0, join(dirname(__file__), '..'))
+sys.path.insert(0, join(dirname(__file__), '../..'))
 
 import cv2
 import time
@@ -31,7 +32,7 @@ device = torch.device('cpu')
 generator = GeneratorUNet()
 
 generator = generator.to(device)
-generator.load_state_dict(torch.load('../ckpt/g.pth', map_location=device))
+generator.load_state_dict(torch.load('../../ckpt/g.pth', map_location=device))
 generator.eval()
 
 img_trans_ = [

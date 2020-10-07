@@ -4,18 +4,28 @@ import sys
 from os.path import join, dirname
 sys.path.insert(0, join(dirname(__file__), '../../'))
 sys.path.insert(0, join(dirname(__file__), '../'))
+import torch
+from torch.autograd import grad
+import torchvision.transforms as transforms
+from learning.models import GeneratorUNet
+from learning.path_model import ModelGRU
+
+import os
 
 import simulator
-simulator.load('/home/wang/CARLA_0.9.9.4')
+import glob
+def load(path='/home/wang/CARLA_0.9.5'):
+    sys.path.append(path+'/PythonAPI')
+    sys.path.append(glob.glob(path+'/PythonAPI/carla/dist/carla-0.9.5-py3.5-linux-x86_64.egg')[0])
+
 import carla
-sys.path.append('/home/wang/CARLA_0.9.9.4/PythonAPI/carla')
+sys.path.append('/home/wang/CARLA_0.9.5/PythonAPI/carla')
 from agents.navigation.basic_agent import BasicAgent
 
 from simulator import config, set_weather, add_vehicle
 from simulator.sensor_manager import SensorManager
 from utils.navigator_sim import get_map, get_nav, replan, close2dest
-from learning.models import GeneratorUNet
-from learning.path_model import Model_COS, ModelGRU
+
 from utils import fig2data, add_alpha_channel
 
 from ff_collect_pm_data import sensor_dict
@@ -24,7 +34,6 @@ from ff.carla_sensor import Sensor, CarlaSensorMaster
 from ff.capac_controller import CapacController
 import carla_utils as cu
 
-import os
 import cv2
 import time
 import copy
@@ -36,10 +45,6 @@ from PIL import Image, ImageDraw
 from datetime import datetime
 import matplotlib.pyplot as plt
 plt.rcParams.update({'figure.max_open_warning': 0})
-
-import torch
-from torch.autograd import grad
-import torchvision.transforms as transforms
 
 global_img = None
 global_pcd = None
@@ -210,13 +215,14 @@ def view_image_callback(data):
 def lidar_callback(data):
     global global_pcd
     ts = time.time()
-    lidar_data = np.frombuffer(data.raw_data, dtype=np.float32).reshape([-1, 3])
+    #print(dir(data))
+    lidar_data = np.frombuffer(data.raw_data, dtype=np.dtype('f4')).reshape([-1, 3])
     point_cloud = np.stack([-lidar_data[:,1], -lidar_data[:,0], -lidar_data[:,2]])
-    location = global_vehicle.get_location()
-    if np.sqrt((location.x-84.532265)**2+(location.y-105.279831)**2) < 10:
-        mask = np.where((point_cloud[2] > -2.3) & (point_cloud[2] < -1.0))[0]
+    #if np.sqrt((location.x-84.532265)**2+(location.y-105.279831)**2) < 10:
+    #    mask = np.where((point_cloud[2] > -2.3) & (point_cloud[2] < -1.0))[0]
     #if args.town == 2: mask = np.where((point_cloud[2] > -2.3) & (point_cloud[2] < -0.85))[0]
-    else: mask = np.where((point_cloud[2] > -2.3))[0]
+    #else: mask = np.where((point_cloud[2] > -2.3))[0]
+    mask = np.where((point_cloud[2] > -2.3))[0]
     point_cloud = point_cloud[:, mask]
     global_pcd = point_cloud
     generate_costmap(ts)
@@ -362,6 +368,7 @@ def get_traj(plan_time):
 def generate_costmap(ts):
     global global_pcd, global_ipm_image, global_cost_map, global_trans_costmap_dict
     cost_map = get_cost_map(global_ipm_image, global_pcd)
+
     global_cost_map = cost_map
     img = Image.fromarray(cv2.cvtColor(cost_map,cv2.COLOR_BGR2RGB)).convert('L')
     trans_img = cost_map_trans(img)
@@ -391,10 +398,10 @@ def make_plan():
 
         # 3. get trajectory
         #time.sleep(0.1)
-        try:
-            global_trajectory = get_traj(plan_time)
-        except:
-            pass
+        #try:
+        global_trajectory = get_traj(plan_time)
+        #except:
+        #    pass
 
         if not start_control:
             start_control = True
@@ -506,11 +513,12 @@ def show_traj(save=False):
     
 def main():
     global global_nav, global_vel, start_control, global_plan_map, global_vehicle, global_cost_map, global_transform, max_steer_angle, global_a, draw_cost_map, state0, global_collision, last_collision_time
+    config['host'] = '10.12.120.88'
     client = carla.Client(config['host'], config['port'])
     client.set_timeout(config['timeout'])
-    
     town = 'Town0'+str(args.town)
     world = client.load_world(town)
+
     world_map = world.get_map()
     poses = read(town+'/navigation_with_dynamic_obstacles.csv', world_map)
     """
@@ -538,8 +546,8 @@ def main():
     global_vehicle = vehicle
     # Enables or disables the simulation of physics on this actor.
     vehicle.set_simulate_physics(True)
-    physics_control = vehicle.get_physics_control()
-    max_steer_angle = np.deg2rad(physics_control.wheels[0].max_steer_angle)
+    #physics_control = vehicle.get_physics_control()
+    max_steer_angle = np.deg2rad(80)
     sensor_dict = {
         'camera':{
             'transform':carla.Transform(carla.Location(x=0.5, y=0.0, z=2.5)),

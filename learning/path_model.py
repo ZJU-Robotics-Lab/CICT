@@ -234,6 +234,24 @@ class ModelGRU(nn.Module):
         x = F.leaky_relu(x[:, -1, :])
         x = self.mlp(x, t, v0)
         return x
+   
+    
+class CNNFC(nn.Module):
+    def __init__(self, hidden_dim=256):
+        super(CNNFC, self).__init__()
+        self.cnn_feature_dim = hidden_dim
+        self.cnn = CNN(input_dim=1, out_dim=self.cnn_feature_dim)
+        self.mlp = FC(input_dim=self.cnn_feature_dim*10, output_dim=10*4)
+
+    def forward(self, x):
+        batch_size, timesteps, C, H, W = x.size()
+        
+        x = x.view(batch_size * timesteps, C, H, W)
+        x = self.cnn(x)
+        x = x.view(batch_size, -1)
+        x = self.mlp(x)
+        return x
+    
     
 class ModelGMM(nn.Module):
     def __init__(self, k=10, hidden_dim=256):
@@ -330,6 +348,28 @@ class CNN(nn.Module):
         x = x.view(-1, self.out_dim)
         return x
         
+class FC(nn.Module):
+    def __init__(self, input_dim, output_dim):
+        super(FC, self).__init__()
+        self.linear1 = nn.Linear(input_dim, 512)
+        self.linear2 = nn.Linear(512, 256)
+        self.linear3 = nn.Linear(256, 256)
+        self.linear4 = nn.Linear(256, output_dim)
+        self.apply(weights_init)
+        
+    def forward(self, x):
+        x = self.linear1(x)
+        x = torch.tanh(x)
+        #x = F.dropout(x, p=0.5, training=self.training)
+        x = self.linear2(x)
+        x = torch.tanh(x)
+        #x = F.dropout(x, p=0.5, training=self.training)
+        x = self.linear3(x)
+        x = torch.tanh(x)
+        #x = F.dropout(x, p=0.5, training=self.training)
+        x = self.linear4(x)
+        return x
+    
 class MLP2(nn.Module):
     def __init__(self):
         super(MLP2, self).__init__()
@@ -419,7 +459,7 @@ class MLP_COS(nn.Module):
         self.linear2 = nn.Linear(512, 512)
         self.linear3 = nn.Linear(512, 512)
         self.linear4 = nn.Linear(512, 256)
-        self.linear5 = nn.Linear(256, 4)
+        self.linear5 = nn.Linear(256, 2)
         
         self.apply(weights_init)
         
@@ -560,38 +600,40 @@ class SIN_MLP(nn.Module):
         _y = torch.tanh(_y)
         #x = torch.tanh(x)
         return torch.cat([_x, _y], dim=1)
-    
-class VAE(nn.Module):
-    def __init__(self):
-        super(VAE, self).__init__()
-        self.cnn = CNN()
-        """
-        self.mlp = nn.Sequential(
-            nn.Linear(128+1, 256),
-            nn.LeakyReLU(),
-            nn.Linear(256, 256),
-            nn.LeakyReLU(),
-            nn.Linear(256, 128),
-            nn.LeakyReLU(),
-            nn.Linear(128, 2),
-            nn.Tanh(),
-        )
-        """
-        self.mlp = SIN_MLP()
-        self.fc_mu = nn.Linear(256, 128)
-        self.fc_log_var = nn.Linear(256, 128)
-        
-    def encode(self, x):
-        h = self.cnn(x)
-        return self.fc_mu(h), self.fc_log_var(h)
-    
+
+class ModelVAE(nn.Module):
+    def __init__(self, hidden_dim=256):
+        super(ModelVAE, self).__init__()
+        self.cnn_feature_dim = hidden_dim
+        self.rnn_hidden_dim = hidden_dim
+        self.cnn = CNN(input_dim=1, out_dim=self.cnn_feature_dim)
+        self.fc_mu = nn.Linear(256, 256)
+        self.fc_log_var = nn.Linear(256, 256)
+
+        self.gru = nn.GRU(
+            input_size = self.cnn_feature_dim, 
+            hidden_size = self.rnn_hidden_dim, 
+            num_layers = 2,
+            batch_first=True,
+            dropout=0.2)
+        self.mlp = MLP_COS(input_dim=self.rnn_hidden_dim+2)
+
     def reparameterize(self, mu, logvar):
         std = torch.exp(0.5*logvar)
         eps = torch.randn_like(std)
         return mu + eps*std
     
-    def forward(self, x, t):
-        mu, logvar = self.encode(x)
-        z = self.reparameterize(mu, logvar)
-        z_t = torch.cat([z, t], dim=1)
-        return self.mlp(z_t), mu, logvar
+    def forward(self, x, t, v0):
+        batch_size, timesteps, C, H, W = x.size()
+        
+        x = x.view(batch_size * timesteps, C, H, W)
+        x = self.cnn(x)
+        x = x.view(batch_size, timesteps, -1)
+        x, h_n, = self.gru(x)
+        x = F.leaky_relu(x[:, -1, :])
+        
+        mu = self.fc_mu(x)
+        logvar = self.fc_log_var(x)
+        x = self.reparameterize(mu, logvar)
+        x = self.mlp(x, t, v0)
+        return x, mu, logvar

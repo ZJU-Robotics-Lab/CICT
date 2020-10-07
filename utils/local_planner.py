@@ -59,12 +59,12 @@ def get_cost_map(trans_pc, point_cloud, show=False):
     u, v = project(point_cloud[0], point_cloud[1])
     img2[u,v] = 0
     
-    kernel = np.ones((25,25),np.uint8)  
+    kernel = np.ones((21,21),np.uint8)  
     img2 = cv2.erode(img2,kernel,iterations = 1)
     
     img = cv2.addWeighted(img,0.5,img2,0.5,0)
-    kernel_size = (21, 21)
-    sigma = 25
+    kernel_size = (15, 15)
+    sigma = 15
     img = cv2.GaussianBlur(img, kernel_size, sigma);
     if show:
         cv2.imshow('Result', img)
@@ -136,11 +136,12 @@ def get_cmd(img, show=False, save=False, file_name=None):
             best_u = u
             best_v = v
 
-    img[best_u,best_v] = 0
+    #img[best_u,best_v] = 0
 
     if show:
-        cv2.imshow('Result', img)
-        cv2.waitKey(100)
+        #cv2.imshow('Result', img)
+        #cv2.waitKey(100)
+        cv2.imwrite('re.png', img)
         #cv2.destroyAllWindows()
 
     direct = -1.0 if best_r > 0 else 1.0

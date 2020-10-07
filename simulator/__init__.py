@@ -21,7 +21,7 @@ config = {
         'rpm': 30,
         'sensor_tick':0.05,
         'pps': 100000,
-        'range': 50,
+        'range': 5000,# <= 0.9.5
         'lower_fov': -30,
         'upper_fov': 10,
         },

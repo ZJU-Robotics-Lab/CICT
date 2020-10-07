@@ -67,7 +67,7 @@ class CapacController(object):
         a, t = trajectory['a'][index], trajectory['time']
         theta, v = np.arctan2(vy, vx), np.hypot(vx, vy)
         k = (vx*ay-vy*ax)/(v**3)
-        target_state = cu.State('base_link', time_stamp, x=x, y=y, theta=theta, v=v, a=a, k=k, t=t)
+        target_state = cu.State('base_link',time_stamp, x=x, y=y, theta=theta, v=v, a=a, k=k, t=t)
         target_state.y = target_state.y-0.2
         
         steer = self.rwpf(current_state, target_state)
@@ -81,7 +81,7 @@ class CapacController(object):
         #localtion = carla.Location(x = global_target.x, y=global_target.y, z=2.0)
         #self.world.debug.draw_point(localtion, size=0.2, color=carla.Color(255,0,0), life_time=5.0)
         # throttle, brake = 1, 0
-        throttle += 0.15
+        throttle += 0.5#15
         throttle = np.clip(throttle, 0., 1.)
         #throttle = throttle/(1+abs(steer))
         
