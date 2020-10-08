@@ -237,10 +237,10 @@ class ModelGRU(nn.Module):
    
     
 class CNNFC(nn.Module):
-    def __init__(self, hidden_dim=256):
+    def __init__(self, hidden_dim=256, input_dim=1):
         super(CNNFC, self).__init__()
         self.cnn_feature_dim = hidden_dim
-        self.cnn = CNN(input_dim=1, out_dim=self.cnn_feature_dim)
+        self.cnn = CNN(input_dim=input_dim, out_dim=self.cnn_feature_dim)
         self.mlp = FC(input_dim=self.cnn_feature_dim*10, output_dim=10*4)
 
     def forward(self, x):
@@ -251,19 +251,20 @@ class CNNFC(nn.Module):
         x = x.view(batch_size, -1)
         x = self.mlp(x)
         return x
-    
+
 class CNNLSTM(nn.Module):
-    def __init__(self, hidden_dim=256):
+    def __init__(self, hidden_dim=256, input_dim=1):
         super(CNNLSTM, self).__init__()
         self.cnn_feature_dim = hidden_dim
         self.rnn_hidden_dim = hidden_dim
-        self.cnn = CNN(input_dim=1, out_dim=self.cnn_feature_dim)
+        self.cnn = CNN(input_dim=input_dim, out_dim=self.cnn_feature_dim)
         self.lstm = nn.LSTM(
             input_size = self.cnn_feature_dim, 
             hidden_size = self.rnn_hidden_dim, 
             num_layers = 3,
             batch_first=True,
-            dropout=0.2)
+            dropout=0.2
+            )
         self.mlp = FC(input_dim=self.rnn_hidden_dim, output_dim=10*4)
 
     def forward(self, x):
@@ -278,6 +279,54 @@ class CNNLSTM(nn.Module):
         x = self.mlp(x)
         return x
     
+class VAELSTM(nn.Module):
+    def __init__(self, hidden_dim=256, input_dim=1):
+        super(VAELSTM, self).__init__()
+        self.cnn_feature_dim = hidden_dim
+        self.rnn_hidden_dim = hidden_dim
+        self.cnn = CNN(input_dim=input_dim, out_dim=self.cnn_feature_dim)
+        self.fc_mu = nn.Linear(hidden_dim, hidden_dim)
+        self.fc_mu = nn.Sequential(
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.Tanh(),
+            nn.Linear(hidden_dim, hidden_dim)
+            )
+        
+        self.fc_log_var = nn.Sequential(
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.Tanh(),
+            nn.Linear(hidden_dim, hidden_dim)
+            )
+        self.lstm = nn.LSTM(
+            input_size = self.cnn_feature_dim, 
+            hidden_size = self.rnn_hidden_dim, 
+            num_layers = 3,
+            batch_first=True,
+            dropout=0.2
+            )
+        self.mlp = FC(input_dim=self.rnn_hidden_dim, output_dim=10*4)
+
+    def reparameterize(self, mu, logvar):
+        std = torch.exp(0.5*logvar)
+        eps = torch.randn_like(std)
+        return mu + eps*std
+    
+    def forward(self, x, test=False):
+        batch_size, timesteps, C, H, W = x.size()
+        
+        x = x.view(batch_size * timesteps, C, H, W)
+        x = self.cnn(x)
+        
+        x = x.view(batch_size, timesteps, -1)
+        x, _ = self.lstm(x)
+        x = torch.tanh(x[:, -1, :])
+        
+        mu = self.fc_mu(x)
+        logvar = self.fc_log_var(x)
+        if test: x = mu
+        else: x = self.reparameterize(mu, logvar)
+        x = self.mlp(x)
+        return x, mu, logvar
     
 class ModelGMM(nn.Module):
     def __init__(self, k=10, hidden_dim=256):
@@ -358,15 +407,15 @@ class CNN(nn.Module):
 
     def forward(self, x):
         x = self.conv1(x)
-        x = self.bn1(x)
+        #x = self.bn1(x)
         x = F.leaky_relu(x)
         x = F.max_pool2d(x, 2, 2)
         x = self.conv2(x)
-        x = self.bn2(x)
+        #x = self.bn2(x)
         x = F.leaky_relu(x)
         x = F.max_pool2d(x, 2, 2)         
         x = self.conv3(x)
-        x = self.bn3(x)
+        #x = self.bn3(x)
         x = F.leaky_relu(x)
         x = F.max_pool2d(x, 2, 2)
         x = self.conv4(x)
