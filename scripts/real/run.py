@@ -91,7 +91,7 @@ def inverse_perspective_mapping(img):
     #2.2 ms
     img = get_cost_map(trans_pc, point_cloud, False)
     #2.1 ms
-    yaw = get_cmd(img, show=opt.show)
+    yaw, steer = get_cmd(img, show=opt.show)
 
     #direct = 1.0 if w >0 else -1.0
     #rotation = np.rad2deg(yaw)/30.

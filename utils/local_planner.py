@@ -146,4 +146,46 @@ def get_cmd(img, show=False, save=False, file_name=None):
 
     direct = -1.0 if best_r > 0 else 1.0
     yaw = direct*np.arctan2(Length, abs(best_r))
-    return yaw
+    return yaw, rwpf(best_r)
+
+
+
+k_k = 1.235
+k_theta = 0.456
+k_e = 0.11#0.1386
+max_steer = np.deg2rad(30)
+
+def pi2pi(theta, theta0=0.0):
+    return (theta + np.pi) % (2 * np.pi) - np.pi
+
+def rwpf(radius, distance=0.5):
+    kr = 1. / radius
+    vr = v = 1.0
+
+    thetar = kr * distance
+    if kr < 0.001:
+        xr, yr = distance, 0
+    else:
+        xr = np.sin(distance*kr) / kr
+        yr = (1-np.cos(distance*kr)) / kr
+
+    dx = - xr
+    dy = - yr
+    tx = np.cos(thetar)
+    ty = np.sin(thetar)
+    e = dx*ty - dy*tx
+    theta_e = pi2pi( - thetar)
+
+    alpha = 1.8
+    
+    w1 = k_k * vr*kr*np.cos(theta_e)
+    w2 = - k_theta * np.fabs(vr)*theta_e
+    w3 = (k_e*vr*np.exp(-theta_e**2/alpha))*e
+    w = (w1+w2+w3)*0.8
+    #print(dx, dy, current_state.theta, xr, yr, thetar)
+    if v < 0.02:
+        steer = 0
+    else:
+        steer = np.arctan2(w*Length, v) * 2 / np.pi * max_steer
+
+    return steer
