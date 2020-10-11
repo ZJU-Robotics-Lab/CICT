@@ -234,7 +234,112 @@ class ModelGRU(nn.Module):
         x = F.leaky_relu(x[:, -1, :])
         x = self.mlp(x, t, v0)
         return x
-   
+
+
+class ModelGRU2(nn.Module):
+    def __init__(self, hidden_dim=256):
+        super(ModelGRU2, self).__init__()
+        self.cnn_feature_dim = hidden_dim
+        self.rnn_hidden_dim = hidden_dim
+        self.cnn = CNN(input_dim=1, out_dim=self.cnn_feature_dim)
+        #self.cnn = ResidualNet()
+        self.gru = nn.GRU(
+            input_size = self.cnn_feature_dim, 
+            hidden_size = self.rnn_hidden_dim, 
+            num_layers = 2,
+            batch_first=True,
+            dropout=0.0)
+        self.mlp = MLP_COS(input_dim=self.rnn_hidden_dim+2, output=4)
+
+    def forward(self, x, t, v0):
+        batch_size, timesteps, C, H, W = x.size()
+        
+        x = x.view(batch_size * timesteps, C, H, W)
+        x = self.cnn(x)
+        
+        x = x.view(batch_size, timesteps, -1)
+        x, h_n, = self.gru(x)
+
+        x = F.leaky_relu(x[:, -1, :])
+        x = self.mlp(x, t, v0)
+        return x
+    
+    
+class ModelGRUNOCOS(nn.Module):
+    def __init__(self, hidden_dim=256):
+        super(ModelGRUNOCOS, self).__init__()
+        self.cnn_feature_dim = hidden_dim
+        self.rnn_hidden_dim = hidden_dim
+        self.cnn = CNN(input_dim=1, out_dim=self.cnn_feature_dim)
+        #self.cnn = ResidualNet()
+        self.gru = nn.GRU(
+            input_size = self.cnn_feature_dim, 
+            hidden_size = self.rnn_hidden_dim, 
+            num_layers = 3,
+            batch_first=True,
+            dropout=0.2)
+        self.mlp = nn.Sequential(
+            nn.Linear(self.rnn_hidden_dim+2, 512),
+            nn.Tanh(),
+            nn.Linear(512, 512),
+            nn.Tanh(),
+            nn.Linear(512, 256),
+            nn.Tanh(),
+            nn.Linear(256, 2),
+        )
+
+    def forward(self, x, t, v0):
+        batch_size, timesteps, C, H, W = x.size()
+        
+        x = x.view(batch_size * timesteps, C, H, W)
+        x = self.cnn(x)
+        
+        x = x.view(batch_size, timesteps, -1)
+        x, h_n, = self.gru(x)
+
+        x = F.leaky_relu(x[:, -1, :])
+        x = torch.cat([x, t], dim=1)
+        x = torch.cat([x, v0], dim=1)
+        x = self.mlp(x)
+        return x
+    
+    
+class ModelGRUNOV(nn.Module):
+    def __init__(self, hidden_dim=256):
+        super(ModelGRUNOV, self).__init__()
+        self.cnn_feature_dim = hidden_dim
+        self.rnn_hidden_dim = hidden_dim
+        self.cnn = CNN(input_dim=1, out_dim=self.cnn_feature_dim)
+        #self.cnn = ResidualNet()
+        self.gru = nn.GRU(
+            input_size = self.cnn_feature_dim, 
+            hidden_size = self.rnn_hidden_dim, 
+            num_layers = 3,
+            batch_first=True,
+            dropout=0.2)
+        self.mlp = nn.Sequential(
+            nn.Linear(self.rnn_hidden_dim+1, 512),
+            nn.Tanh(),
+            nn.Linear(512, 512),
+            nn.Tanh(),
+            nn.Linear(512, 256),
+            nn.Tanh(),
+            nn.Linear(256, 2),
+        )
+
+    def forward(self, x, t):
+        batch_size, timesteps, C, H, W = x.size()
+        
+        x = x.view(batch_size * timesteps, C, H, W)
+        x = self.cnn(x)
+        
+        x = x.view(batch_size, timesteps, -1)
+        x, h_n, = self.gru(x)
+
+        x = F.leaky_relu(x[:, -1, :])
+        x = torch.cat([x, t], dim=1)
+        x = self.mlp(x)
+        return x
     
 class CNNFC(nn.Module):
     def __init__(self, hidden_dim=256, input_dim=1):
@@ -250,6 +355,30 @@ class CNNFC(nn.Module):
         x = self.cnn(x)
         x = x.view(batch_size, -1)
         x = self.mlp(x)
+        return x
+    
+    
+class CIL(nn.Module):
+    def __init__(self, hidden_dim=256, input_dim=3):
+        super(CIL, self).__init__()
+        self.cnn_feature_dim = hidden_dim
+        self.cnn = CNN(input_dim=input_dim, out_dim=self.cnn_feature_dim)
+        self.mlp_l = FC(input_dim=self.cnn_feature_dim*10, output_dim=10*4)
+        self.mlp_s = FC(input_dim=self.cnn_feature_dim*10, output_dim=10*4)
+        self.mlp_r = FC(input_dim=self.cnn_feature_dim*10, output_dim=10*4)
+
+    def forward(self, x, cmd):
+        batch_size, timesteps, C, H, W = x.size()
+        
+        x = x.view(batch_size * timesteps, C, H, W)
+        x = self.cnn(x)
+        x = x.view(batch_size, -1)
+        if cmd == 'l':
+            x = self.mlp_l(x)
+        elif cmd == 'r':
+            x = self.mlp_r(x)
+        else:
+            x = self.mlp_s(x)
         return x
 
 class CNNLSTM(nn.Module):
@@ -278,6 +407,67 @@ class CNNLSTM(nn.Module):
         x = F.leaky_relu(x[:, -1, :])
         x = self.mlp(x)
         return x
+
+class MDN(nn.Module):
+    def __init__(self, input_dim=256, n_hidden=256, output_dim=10, n_gaussians=3):
+        super(MDN, self).__init__()
+        self.z_h = nn.Sequential(
+            nn.Linear(input_dim, n_hidden),
+            nn.Tanh(),
+            nn.Linear(n_hidden, n_hidden),
+            nn.Tanh(),
+        )
+        self.z_pi = nn.Sequential(
+            nn.Linear(n_hidden, n_hidden),
+            nn.Tanh(),
+            nn.Linear(n_hidden, n_gaussians*output_dim),
+        )
+        self.z_mu = nn.Sequential(
+            nn.Linear(n_hidden, n_hidden),
+            nn.Tanh(),
+            nn.Linear(n_hidden, n_gaussians*output_dim),
+        )
+        self.z_sigma = nn.Sequential(
+            nn.Linear(n_hidden, n_hidden),
+            nn.Tanh(),
+            nn.Linear(n_hidden, n_gaussians*output_dim),
+        )
+    
+    def forward(self, x):
+        z_h = self.z_h(x)
+        pi = F.softmax(self.z_pi(z_h), -1)
+        mu = self.z_mu(z_h)
+        sigma = torch.exp(self.z_sigma(z_h))
+        return pi, mu, sigma
+    
+class GRUMDN(nn.Module):
+    def __init__(self, hidden_dim=256, input_dim=1, k=3):
+        super(GRUMDN, self).__init__()
+        self.cnn_feature_dim = hidden_dim
+        self.rnn_hidden_dim = hidden_dim
+        self.k = k
+        self.cnn = CNN(input_dim=input_dim, out_dim=self.cnn_feature_dim)
+        self.gru = nn.GRU(
+            input_size = self.cnn_feature_dim, 
+            hidden_size = self.rnn_hidden_dim, 
+            num_layers = 3,
+            batch_first=True,
+            dropout=0.2
+            )
+        self.mdn = MDN(input_dim=256, n_hidden=256, output_dim=10*4, n_gaussians=3)
+
+    def forward(self, x):
+        batch_size, timesteps, C, H, W = x.size()
+        
+        x = x.view(batch_size * timesteps, C, H, W)
+        x = self.cnn(x)
+        
+        x = x.view(batch_size, timesteps, -1)
+        x, _ = self.gru(x)
+        x = F.leaky_relu(x[:, -1, :])
+        pi, mu, sigma = self.mdn(x)
+        return pi, mu, sigma
+
     
 class VAELSTM(nn.Module):
     def __init__(self, hidden_dim=256, input_dim=1):
@@ -285,22 +475,19 @@ class VAELSTM(nn.Module):
         self.cnn_feature_dim = hidden_dim
         self.rnn_hidden_dim = hidden_dim
         self.cnn = CNN(input_dim=input_dim, out_dim=self.cnn_feature_dim)
-        self.fc_mu = nn.Linear(hidden_dim, hidden_dim)
-        self.fc_mu = nn.Sequential(
+        self.fc_mu = nn.Sequential(nn.Linear(hidden_dim, hidden_dim))
+        """
+        nn.Sequential(
             nn.Linear(hidden_dim, hidden_dim),
-            nn.Tanh(),
+            nn.LeakyReLU(),
             nn.Linear(hidden_dim, hidden_dim)
             )
-        
-        self.fc_log_var = nn.Sequential(
-            nn.Linear(hidden_dim, hidden_dim),
-            nn.Tanh(),
-            nn.Linear(hidden_dim, hidden_dim)
-            )
-        self.lstm = nn.LSTM(
+        """
+        self.fc_log_var = nn.Sequential(nn.Linear(hidden_dim, hidden_dim))
+        self.gru = nn.GRU(
             input_size = self.cnn_feature_dim, 
             hidden_size = self.rnn_hidden_dim, 
-            num_layers = 3,
+            num_layers = 2,
             batch_first=True,
             dropout=0.2
             )
@@ -318,7 +505,7 @@ class VAELSTM(nn.Module):
         x = self.cnn(x)
         
         x = x.view(batch_size, timesteps, -1)
-        x, _ = self.lstm(x)
+        x, _ = self.gru(x)
         x = torch.tanh(x[:, -1, :])
         
         mu = self.fc_mu(x)
@@ -527,14 +714,14 @@ class MLP(nn.Module):
         return torch.cat([_x, _y], dim=1)
 
 class MLP_COS(nn.Module):
-    def __init__(self, input_dim=257, rate=1.0):
+    def __init__(self, input_dim=257, rate=1.0, output=2):
         super(MLP_COS, self).__init__()
         self.rate = rate
         self.linear1 = nn.Linear(input_dim, 512)
         self.linear2 = nn.Linear(512, 512)
         self.linear3 = nn.Linear(512, 512)
         self.linear4 = nn.Linear(512, 256)
-        self.linear5 = nn.Linear(256, 2)
+        self.linear5 = nn.Linear(256, output)
         
         self.apply(weights_init)
         
