@@ -68,7 +68,7 @@ class CapacController(object):
         theta, v = np.arctan2(vy, vx), np.hypot(vx, vy)
         k = (vx*ay-vy*ax)/(v**3)
         target_state = cu.State('base_link',time_stamp, x=x, y=y, theta=theta, v=v, a=a, k=k, t=t)
-        target_state.y = target_state.y-0.2
+        target_state.y = target_state.y
         
         steer = self.rwpf(current_state, target_state)
         #org_tv = target_state.v
@@ -86,7 +86,7 @@ class CapacController(object):
         #throttle = throttle/(1+abs(steer))
         
         #if throttle > 0 and abs(global_vel) < 0.8 and abs(v_r) < 1.0:
-        if throttle > 0 and abs(current_state.v) < 1.2 and abs(target_state.v) < 1.2:
+        if throttle > 0 and abs(current_state.v) < 0.3 and abs(target_state.v) < 0.3:
             throttle = 0.
             brake = 1.
             steer = 0.
