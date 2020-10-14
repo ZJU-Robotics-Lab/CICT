@@ -16,9 +16,10 @@ bash install.sh
 ```
 
 # Features
-* Run deep learning model
+* Train model
 ```bash
-python scripts/run.py
+python scripts/dataset/train_path.py
+python scripts/carla/train_GAN.py
 ```
 
 * Camera image reading in python with pybind11
