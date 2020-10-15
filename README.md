@@ -27,11 +27,6 @@ python scripts/carla/train_GAN.py
 bash device/camera/build.sh
 python device/camera/run.py
 ```
-* Camera calibration
-```bash
-cd scripts
-python calibration.py --dir imgs --test left-0001.png
-```
 * LiDAR data reading
 ```bash
 cd device/lidar/velodyne-driver
@@ -45,7 +40,7 @@ python lidar.py
 ```
 * IMU data reading
 ```bash
-bash scripts/get_permission.sh
+bash scripts/real/get_permission.sh
 python device/imu/mtnode.py
 ```
 * XBox control
@@ -57,7 +52,7 @@ python device/imu/mtnode.py
   * Hat up and down: increase or reduce max speed
   * Hat right and left: increase or reduce acceleration
 ```bash
-bash scripts/get_permission.sh
+bash scripts/real/get_permission.sh
 cd device/controller
 python xbox.py
 ```
@@ -76,18 +71,18 @@ bash build.sh
 source devel/setup.bash
 roslaunch mynteye_wrapper_d mynteye.launch
 roslaunch velodyne_pointcloud VLP16_points.launch
-python2 src/gps/scripts/run_gps.py
-python2 src/controller/scripts/run.py
+python src/gps/scripts/run_gps.py
+python src/imu/scripts/mtnode.py
 ```
 
 #### Record
 ```bash
-rosbag record /mynteye/left/image_color /velodyne_points /gps /cmd
+rosbag record /mynteye/left/image_color /velodyne_points /gps /imu
 ```
 
 #### Read Rosbag
 ```bash
-python2 ROS/src/tools/save_img.py -d 1 -b 2020-07-11-17-50-49.bag
+python ROS/src/tools/save_img.py -d 1 -b 2020-07-11-17-50-49.bag
 ```
 
 #### Calibration
