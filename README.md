@@ -105,4 +105,16 @@ bash run_collect.sh
 
 # Video
 
-[![video](./doc/video_link.png)](https://www.youtube.com/watch?v=3FuBtssUuRY)
+[![video](./doc/video_link.png)](https://www.youtube.com/watch?v=J6K-gSU12j8&t=4s&ab_channel=ZJURoboticsLab)
+
+
+## Citation
+If you use our source code, please consider citing the following:
+```bibtex
+@article{wang2020imitation,
+  title={Imitation Learning of Hierarchical Driving Model: from Continuous Intention to Continuous Trajectory},
+  author={Wang, Yunkai and Zhang, Dongkun and Wang, Jingke and Chen, Zexi and Wang, Yue and Xiong, Rong},
+  journal={arXiv preprint arXiv:2010.10393},
+  year={2020}
+}
+```
