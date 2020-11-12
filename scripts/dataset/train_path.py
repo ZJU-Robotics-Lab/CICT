@@ -31,15 +31,15 @@ global_trajectory = None
 global_trajectory_real = None
 
 random.seed(datetime.now())
-torch.manual_seed(666)
-torch.cuda.manual_seed(666)
+torch.manual_seed(233)
+torch.cuda.manual_seed(233)
 torch.set_num_threads(16)
 
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--test_mode', type=bool, default=False, help='test model switch')
-parser.add_argument('--dataset_name', type=str, default="kitti-test-ours-02", help='name of the dataset')
+parser.add_argument('--dataset_name', type=str, default="kitti-train-ours-04", help='name of the dataset')
 parser.add_argument('--width', type=int, default=400, help='image width')
 parser.add_argument('--height', type=int, default=200, help='image height')
 parser.add_argument('--scale', type=float, default=30., help='longitudinal length')
@@ -67,7 +67,7 @@ if not opt.test_mode:
     write_params(log_path, parser, description)
     
 model = ModelGRU(256).to(device)
-model.load_state_dict(torch.load('result/saved_models/kitti-train-ours-01/model_396000.pth'))
+#model.load_state_dict(torch.load('result/saved_models/kitti-train-ours-01/model_396000.pth'))
 criterion = torch.nn.MSELoss().to(device)
 optimizer = torch.optim.Adam(model.parameters(), lr=opt.lr, weight_decay=opt.weight_decay)
 

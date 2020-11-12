@@ -15,7 +15,7 @@ from simulator import config, set_weather, add_vehicle
 from simulator.sensor_manager import SensorManager
 from utils.navigator_sim import get_map, get_nav, replan, close2dest
 from learning.models import GeneratorUNet
-from learning.path_model import ModelGRU
+from learning.path_model import Model_COS, ModelGRU2
 from utils import fig2data, add_alpha_channel
 
 from ff_collect_pm_data import sensor_dict
@@ -57,6 +57,8 @@ max_steer_angle = 0.
 draw_cost_map = None
 global_view_img = None
 state0 = None
+global_collision = False
+last_collision_time = time.time()
 global_ipm_image = np.zeros((200,400), dtype=np.uint8)
 global_ipm_image.fill(255)
 
@@ -67,24 +69,26 @@ global_trans_costmap_dict = {}
 MAX_SPEED = 30
 img_height = 128
 img_width = 256
-#longitudinal_length = 25.0 # [m]
+longitudinal_length = 25.0 # [m]
 
 random.seed(datetime.now())
-torch.manual_seed(999)
-torch.cuda.manual_seed(999)
+torch.manual_seed(666)
+torch.cuda.manual_seed(666)
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 generator = GeneratorUNet()
 generator = generator.to(device)
+#generator.load_state_dict(torch.load('../../ckpt/sim-obs/g.pth'))
 generator.load_state_dict(torch.load('result/saved_models/cgan-human-data-04/g_74000.pth'))
-model = ModelGRU().to(device)
+model = ModelGRU2().to(device)
 model.load_state_dict(torch.load('result/saved_models/mu-log_var-06/model_364000.pth'))
 generator.eval()
 model.eval()
 
 parser = argparse.ArgumentParser(description='Params')
 parser.add_argument('-d', '--data', type=int, default=1, help='data index')
-parser.add_argument('-s', '--save', type=bool, default=False, help='save result')
+parser.add_argument('-t', '--town', type=int, default=1, help='twon index')
+parser.add_argument('-s', '--save', type=bool, default=True, help='save result')
 parser.add_argument('--width', type=int, default=400, help='image width')
 parser.add_argument('--height', type=int, default=200, help='image height')
 parser.add_argument('--max_dist', type=float, default=25., help='max distance')
@@ -107,12 +111,14 @@ img_trans = transforms.Compose(img_transforms)
 cost_map_transforms_ = [ transforms.Resize((200, 400), Image.BICUBIC),
     transforms.ToTensor(),
     transforms.Normalize((0.5), (0.5))
+    # for resnet backbone
+    #transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
     ]
 cost_map_trans = transforms.Compose(cost_map_transforms_)
         
 class Param(object):
     def __init__(self):
-        self.longitudinal_length = args.scale
+        self.longitudinal_length = longitudinal_length
         self.ksize = 21
         
 param = Param()
@@ -120,11 +126,31 @@ sensor = Sensor(sensor_dict['camera']['transform'], config['camera'])
 sensor_master = CarlaSensorMaster(sensor, sensor_dict['camera']['transform'], binded=True)
 inverse_perspective_mapping = InversePerspectiveMapping(param, sensor_master)
 
+def read(file_path, town_map):
+    poses = []
+    file = open(file_path)
+    while True:
+        line = file.readline()
+        if not line:
+            break
+        if line == '\n':
+            continue
+
+        line_list = line.split(',')
+        start_x, start_y = eval(line_list[0]), eval(line_list[1])
+        end_x, end_y = eval(line_list[2]), eval(line_list[3])
+
+        start_transform = town_map.get_waypoint(carla.Location(x=start_x, y=start_y)).transform
+        end_transform = town_map.get_waypoint(carla.Location(x=end_x, y=end_y)).transform
+        poses.append([start_transform, end_transform])
+    file.close()
+    return poses
+
 def get_cost_map(img, point_cloud):
     img2 = np.zeros((args.height, args.width), np.uint8)
     img2.fill(255)
     
-    pixs_per_meter = args.height/args.scale
+    pixs_per_meter = args.height/longitudinal_length
     u = (args.height-point_cloud[0]*pixs_per_meter).astype(int)
     v = (-point_cloud[1]*pixs_per_meter+args.width//2).astype(int)
     
@@ -186,11 +212,21 @@ def lidar_callback(data):
     ts = time.time()
     lidar_data = np.frombuffer(data.raw_data, dtype=np.float32).reshape([-1, 3])
     point_cloud = np.stack([-lidar_data[:,1], -lidar_data[:,0], -lidar_data[:,2]])
-    mask = np.where(point_cloud[2] > -2.3)[0]
+    location = global_vehicle.get_location()
+    if np.sqrt((location.x-84.532265)**2+(location.y-105.279831)**2) < 10:
+        mask = np.where((point_cloud[2] > -2.3) & (point_cloud[2] < -1.0))[0]
+    #if args.town == 2: mask = np.where((point_cloud[2] > -2.3) & (point_cloud[2] < -0.85))[0]
+    else: mask = np.where((point_cloud[2] > -2.3))[0]
     point_cloud = point_cloud[:, mask]
     global_pcd = point_cloud
     generate_costmap(ts)
 
+def collision_callback(data):
+    global global_collision
+    if global_collision: return
+    global_collision = True
+    print(data)
+    
 def get_cGAN_result(img, nav):
     img = Image.fromarray(cv2.cvtColor(img,cv2.COLOR_BGR2RGB))
     nav = Image.fromarray(cv2.cvtColor(nav,cv2.COLOR_BGR2RGB))
@@ -203,9 +239,10 @@ def get_cGAN_result(img, nav):
     #print(result.max(), result.min())
     return result
 
-cnt = 0
-def visualize(img, costmap, nav, curve=None):
+
+def visualize(img, costmap, nav, curve=None, index=0):
     global global_vel, cnt
+    #if cnt % 3 == 0: cv2.imwrite('result/images/result4/'+str(cnt)+'.png', img)
     #costmap = cv2.cvtColor(costmap,cv2.COLOR_GRAY2RGB)
     text = "speed: "+str(round(3.6*global_vel, 1))+' km/h'
     cv2.putText(img, text, (20, 30), cv2.FONT_HERSHEY_PLAIN, 2.0, (255, 255, 255), 2)
@@ -220,9 +257,9 @@ def visualize(img, costmap, nav, curve=None):
         left_img = cv2.resize(curve, (int(curve.shape[1]*show_img.shape[0]/curve.shape[0]), show_img.shape[0]), interpolation=cv2.INTER_CUBIC)
         show_img = np.hstack([show_img, left_img])
     cv2.imshow('Visualization', show_img)
-    if args.save: cv2.imwrite('result/images/img02/'+str(cnt)+'.png', show_img)
+    if args.save: cv2.imwrite('imgs/'+str(index)+'.png', show_img)
     cv2.waitKey(5)
-    cnt += 1
+
 
 def draw_traj(cost_map, output):
     cost_map = Image.fromarray(cost_map).convert("RGB")
@@ -317,9 +354,8 @@ def get_traj(plan_time):
     a = a.data.cpu().numpy()
     log_var = log_var.data.cpu().numpy()
     #var = np.sqrt(np.exp(log_var))
-    
+    #time.sleep(0.05)
     #state0 = cu.getActorState('odom', plan_time, global_vehicle)
-    #time.sleep(0.1)
     trajectory = {'time':plan_time, 'x':x, 'y':y, 'vx':vx, 'vy':vy, 'ax':ax, 'ay':ay, 'a':a}
     return trajectory
 
@@ -347,13 +383,18 @@ def make_plan():
         img = copy.deepcopy(global_img)
         mask = np.where(result > 200)
         img[mask[0],mask[1]] = (255, 0, 0, 255)
-        
-        ipm_image = inverse_perspective_mapping.getIPM(result)
-        global_ipm_image = ipm_image
+        try:
+            ipm_image = inverse_perspective_mapping.getIPM(result)
+            global_ipm_image = ipm_image
+        except:
+            pass
 
         # 3. get trajectory
-        #time.sleep(0.1)
-        global_trajectory = get_traj(plan_time)
+        #time.sleep(1.2-0.11)
+        try:
+            global_trajectory = get_traj(plan_time)
+        except:
+            pass
 
         if not start_control:
             start_control = True
@@ -425,52 +466,56 @@ def get_control(x, y, vx, vy, ax, ay):
     control.steer = np.clip(steer, -1., 1.)
     return control
 
-def show_traj(save=False):
+def show_traj(i=0, save=False):
     global global_trajectory
     max_x = 30.
     max_y = 30.
     max_speed = 12.0
-    while True:
-        trajectory = global_trajectory
-        fig = plt.figure()
-        ax1 = fig.add_subplot(111)
-        x = trajectory['x']
-        y = trajectory['y']
-        ax1.plot(x, y, label='trajectory', color = 'b', linewidth=3)
-        ax1.set_xlabel('Tangential/(m)')
-        ax1.set_ylabel('Normal/(m)')
-        ax1.set_xlim([0., max_x])
-        ax1.set_ylim([-max_y, max_y])
-        plt.legend(loc='lower right')
-        
-        t = max_x*np.arange(0, 1.0, 1./x.shape[0])
-        a = trajectory['a']
-        vx = trajectory['vx']
-        vy = trajectory['vy']
-        v = np.sqrt(np.power(vx, 2), np.power(vy, 2))
-        angle = np.arctan2(vy, vx)/np.pi*max_speed
-        ax2 = ax1.twinx()
-        ax2.plot(t, v, label='speed', color = 'r', linewidth=2)
-        ax2.plot(t, a, label='acc', color = 'y', linewidth=2)
-        ax2.plot(t, angle, label='angle', color = 'g', linewidth=2)
-        ax2.set_ylabel('Velocity/(m/s)')
-        ax2.set_ylim([-max_speed, max_speed])
-        plt.legend(loc='upper right')
-        if not save:
-            plt.show()
-        else:
-            image = fig2data(fig)
-            plt.close('all')
-            return image
+
+    trajectory = global_trajectory
+    fig = plt.figure()
+    ax1 = fig.add_subplot(111)
+    x = trajectory['x']
+    y = trajectory['y']
+    ax1.plot(x, y, label='trajectory', color = 'b', linewidth=3)
+    ax1.set_xlabel('Tangential/(m)')
+    ax1.set_ylabel('Normal/(m)')
+    ax1.set_xlim([0., max_x])
+    ax1.set_ylim([-max_y, max_y])
+    plt.legend(loc='lower right')
     
+    t = max_x*np.arange(0, 1.0, 1./x.shape[0])
+    a = trajectory['a']
+    vx = trajectory['vx']
+    vy = trajectory['vy']
+    v = np.sqrt(np.power(vx, 2), np.power(vy, 2))
+    angle = np.arctan2(vy, vx)/np.pi*max_speed
+    ax2 = ax1.twinx()
+    ax2.plot(t, v, label='speed', color = 'r', linewidth=2)
+    ax2.plot(t, a, label='acc', color = 'y', linewidth=2)
+    ax2.plot(t, angle, label='angle', color = 'g', linewidth=2)
+    ax2.set_ylabel('Velocity/(m/s)')
+    ax2.set_ylim([-max_speed, max_speed])
+    plt.legend(loc='upper right')
+    if not save:
+        plt.show()
+    else:
+        #image = fig2data(fig)
+        #print(i)
+        plt.savefig('curves/'+str(i)+'.png')
+        plt.close('all')
+        #return image
     
 def main():
-    global global_nav, global_vel, start_control, global_plan_map, global_vehicle, global_cost_map, global_transform, max_steer_angle, global_a, draw_cost_map, state0
+    global global_nav, global_vel, start_control, global_plan_map, global_vehicle, global_cost_map, global_transform, max_steer_angle, global_a, draw_cost_map, state0, global_collision, last_collision_time
     client = carla.Client(config['host'], config['port'])
     client.set_timeout(config['timeout'])
     
-    world = client.load_world('Town01')
-
+    town = 'Town0'+str(args.town)
+    world = client.load_world(town)
+    world_map = world.get_map()
+    #poses = read(town+'/navigation_with_dynamic_obstacles.csv', world_map)
+    """
     weather = carla.WeatherParameters(
         cloudiness=random.randint(0,10),
         precipitation=0,
@@ -478,9 +523,16 @@ def main():
     )
     
     set_weather(world, weather)
+    """
+    #world.set_weather(carla.WeatherParameters.ClearNoon)
+    # [1, 3, 6, 8] for training
+    train_weather = random.sample([carla.WeatherParameters.ClearNoon, carla.WeatherParameters.WetNoon], 1)[0]
+    #test_weather = random.sample([carla.WeatherParameters.WetSunset,carla.WeatherParameters.SoftRainSunset], 1)[0]
+    #world.set_weather(carla.WeatherParameters.HardRainSunset)
+    weather = train_weather# if args.town == 1 else test_weather
+    world.set_weather(weather)
     
     blueprint = world.get_blueprint_library()
-    world_map = world.get_map()
     
     vehicle = add_vehicle(world, blueprint, vehicle_type='vehicle.audi.a2')
     #vehicle = add_vehicle(world, blueprint, vehicle_type='vehicle.yamaha.yzf')
@@ -498,12 +550,16 @@ def main():
         'camera:view':{
             #'transform':carla.Transform(carla.Location(x=0.0, y=4.0, z=4.0), carla.Rotation(pitch=-30, yaw=-60)),
             'transform':carla.Transform(carla.Location(x=-3.0, y=0.0, z=6.0), carla.Rotation(pitch=-45)),
-            #'transform':carla.Transform(carla.Location(x=0.0, y=0.0, z=6.0), carla.Rotation(pitch=-90)),
+            #'transform':carla.Transform(carla.Location(x=4.0, y=0.0, z=10.0), carla.Rotation(pitch=-90)),
             'callback':view_image_callback,
             },
         'lidar':{
             'transform':carla.Transform(carla.Location(x=0.5, y=0.0, z=2.5)),
             'callback':lidar_callback,
+            },
+        'collision':{
+            'transform':carla.Transform(carla.Location(x=0.5, y=0.0, z=2.5)),
+            'callback':collision_callback,
             },
         }
 
@@ -516,16 +572,13 @@ def main():
 
     agent = BasicAgent(vehicle, target_speed=MAX_SPEED)
     
-    # prepare map
     destination = carla.Transform()
     destination.location = world.get_random_location_from_navigation()
-    #destination = get_random_destination(spawn_points)
     global_plan_map = replan(agent, destination, copy.deepcopy(origin_map))
 
-    # start to plan
     plan_thread = threading.Thread(target = make_plan, args=())
-    visualization_thread = threading.Thread(target = show_traj, args=())
 
+    
     while True:
         if (global_img is not None) and (global_nav is not None) and (global_pcd is not None):
             plan_thread.start()
@@ -542,65 +595,42 @@ def main():
     print('Start to control')
     
     ctrller = CapacController(world, vehicle, 30)
-    while True:
+
+    for step in range(9999999):
         # change destination
-        if close2dest(vehicle, destination):
-            #destination = get_random_destination(spawn_points)
-            print('get destination !', time.time())
+        if close2dest(vehicle, destination, 25) or global_collision:
             destination = carla.Transform()
             destination.location = world.get_random_location_from_navigation()
-            global_plan_map = replan(agent, destination, copy.deepcopy(origin_map)) 
-
+            global_plan_map = replan(agent, destination, copy.deepcopy(origin_map))
+            global_collision = False
+            
         v = global_vehicle.get_velocity()
         a = global_vehicle.get_acceleration()
         global_vel = np.sqrt(v.x**2+v.y**2+v.z**2)
         global_a = np.sqrt(a.x**2+a.y**2+a.z**2)
-        #steer_angle = global_vehicle.get_control().steer*max_steer_angle
-        #w = global_vel*np.tan(steer_angle)/2.405
         
         control_time = time.time()
         dt = control_time - global_trajectory['time']
+
         index = int((dt/args.max_t)//args.dt)
-        if index > 0.99/args.dt:
-            continue
+        index += 5
+        if index > 0.99/args.dt-1:
+            index = 0.99//args.dt-1
         
-        """
-        transform = vehicle.get_transform()
-        
-        dx, dy, dyaw = get_transform(transform, global_transform)
-        dyaw = -dyaw
-        
-        _x = global_trajectory['x'][index] - dx
-        _y = global_trajectory['y'][index] - dy
-        x = _x*np.cos(dyaw) + _y*np.sin(dyaw)
-        y = _y*np.cos(dyaw) - _x*np.sin(dyaw)
-        
-        _vx = global_trajectory['vx'][index]
-        _vy = global_trajectory['vy'][index]
-        vx = _vx*np.cos(dyaw) + _vy*np.sin(dyaw)
-        vy = _vy*np.cos(dyaw) - _vx*np.sin(dyaw)
-        
-        _ax = global_trajectory['ax'][index]
-        _ay = global_trajectory['ay'][index]
-        ax = _ax*np.cos(dyaw) + _ay*np.sin(dyaw)
-        ay = _ay*np.cos(dyaw) - _ax*np.sin(dyaw)
-        """
+
         #control = get_control(x, y, vx, vy, ax, ay)
         control = ctrller.run_step(global_trajectory, index, state0)
         vehicle.apply_control(control)
-        """
-        dyaw = np.deg2rad(global_transform.rotation.yaw)
-        x = global_trajectory['x'][index]*np.cos(dyaw) + global_trajectory['y'][index]*np.sin(dyaw)
-        y = global_trajectory['y'][index]*np.cos(dyaw) - global_trajectory['x'][index]*np.sin(dyaw)
-        """
+
         #localtion = carla.Location(x = global_transform.location.x+x, y=global_transform.location.y+y, z=2.0)
         #world.debug.draw_point(localtion, size=0.3, color=carla.Color(255,0,0), life_time=10.0)
         
         #print(global_vel*np.tan(control.steer)/w)
-        
         curve = None#show_traj(True)
-        visualize(global_view_img, draw_cost_map, global_nav, curve)
-        
+        visualize(global_view_img, draw_cost_map, global_nav, curve, step)
+        #print(step)
+        #if step % 10 == 0:
+        #    show_traj(step, True)
         #time.sleep(1/60.)
 
     cv2.destroyAllWindows()

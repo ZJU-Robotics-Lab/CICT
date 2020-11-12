@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 import cv2
 import numpy as np
-
+import time
 pix_width = 0.05
 map_x_min = 0.0
 map_x_max = 10.0
@@ -141,12 +141,12 @@ def get_cmd(img, show=False, save=False, file_name=None):
     if show:
         #cv2.imshow('Result', img)
         #cv2.waitKey(100)
-        cv2.imwrite('re.png', img)
+        cv2.imwrite(str(time.time())+'.png', img)
         #cv2.destroyAllWindows()
 
     direct = -1.0 if best_r > 0 else 1.0
     yaw = direct*np.arctan2(Length, abs(best_r))
-    return yaw, rwpf(best_r)
+    return yaw#, rwpf(best_r)
 
 
 

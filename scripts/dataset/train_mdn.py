@@ -21,7 +21,11 @@ from torch.autograd import grad
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
-from learning.path_model import VAELSTM
+from torch.autograd import Variable
+from torch.distributions import Categorical
+import math
+
+from learning.path_model import GRUMDN
 from utils import write_params, fig2data
 
 import carla_utils as cu
@@ -39,19 +43,19 @@ device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--test_mode', type=bool, default=False, help='test model switch')
-parser.add_argument('--dataset_name', type=str, default="kitti-train-vae-lstm-04", help='name of the dataset')
+parser.add_argument('--dataset_name', type=str, default="kitti-train-mdn-02", help='name of the dataset')
 parser.add_argument('--width', type=int, default=400, help='image width')
 parser.add_argument('--height', type=int, default=200, help='image height')
 parser.add_argument('--scale', type=float, default=30., help='longitudinal length')
 parser.add_argument('--batch_size', type=int, default=32, help='size of the batches')
 parser.add_argument('--traj_steps', type=int, default=8, help='traj steps')
 parser.add_argument('--weight_decay', type=float, default=5e-4, help='adam: weight_decay')
-parser.add_argument('--lr', type=float, default=3e-4, help='adam: learning rate')
+parser.add_argument('--lr', type=float, default=1e-4, help='adam: learning rate')
 parser.add_argument('--gamma', type=float, default=0.01, help='xy and vxy loss trade off')
-parser.add_argument('--gamma2', type=float, default=0.8, help='KLD loss trade off')
+parser.add_argument('--gamma2', type=float, default=0.01, help='xy and axy loss trade off')
 parser.add_argument('--img_step', type=int, default=3, help='RNN input image step')
 parser.add_argument('--n_cpu', type=int, default=16, help='number of cpu threads to use during batch generation')
-parser.add_argument('--checkpoint_interval', type=int, default=1000, help='interval between model checkpoints')
+parser.add_argument('--checkpoint_interval', type=int, default=100, help='interval between model checkpoints')
 parser.add_argument('--test_interval', type=int, default=50, help='interval between model test')
 parser.add_argument('--max_dist', type=float, default=25., help='max distance')
 parser.add_argument('--max_speed', type=float, default=15., help='max distance')
@@ -67,8 +71,8 @@ if not opt.test_mode:
     logger = SummaryWriter(log_dir=log_path)
     write_params(log_path, parser, description)
     
-model = VAELSTM(256).to(device)
-#model.load_state_dict(torch.load('result/saved_models/kitti-train-vae-lstm-01/model_4000.pth'))
+model = GRUMDN(256).to(device)
+#model.load_state_dict(torch.load('result/saved_models/kitti-train-mdn-01/model_500.pth'))
 criterion = torch.nn.MSELoss().to(device)
 optimizer = torch.optim.Adam(model.parameters(), lr=opt.lr, weight_decay=opt.weight_decay)
 
@@ -160,8 +164,13 @@ def draw_traj(step):
     
     ts_list = batch['t'].data.cpu().numpy()[0][:,0]
     
-    output, mu, logvar = model(batch['img'], True)
-    output = output.view(1, 10, 4)
+    pi, sigma, mu = model(batch['img'])
+    try:
+        output = sample(pi, sigma, mu)
+        output = output.view(1, 10, 4)
+    except:
+        model.train()
+        return
     x = output[:,:,0]*opt.max_dist
     y = output[:,:,1]*opt.max_dist
     vx = output[:,:,2]*opt.max_speed
@@ -209,13 +218,19 @@ def eval_error(total_step):
     abs_v = []
     ade = []
     final_displacement = []
-    for i in range(10):
+    for i in range(1):
         batch = next(eval_samples)
         batch['img'] = batch['img'].to(device)
         batch['xy'] = batch['xy'].to(device)
         batch['vxy'] = batch['vxy'].to(device)
     
-        output, mu, logvar = model(batch['img'])
+        #output = model(batch['img'])
+        pi, sigma, mu = model(batch['img'])
+        try:
+            output = sample(pi, sigma, mu)
+            output = output.view(1, 10, 4)
+        except:
+            continue
         output = output.view(1, 10, 4)
         x = output[:,:,0]*opt.max_dist
         y = output[:,:,1]*opt.max_dist
@@ -240,22 +255,61 @@ def eval_error(total_step):
         abs_v.append(np.mean(np.hypot(vx - real_vx, vy - real_vy)))
         ade.append(np.mean(np.hypot(x - real_x, y - real_y)))
 
-    logger.add_scalar('eval/x', sum(abs_x)/len(abs_x), total_step)
-    logger.add_scalar('eval/y', sum(abs_y)/len(abs_y), total_step)
-    logger.add_scalar('eval/vx', sum(abs_vx)/len(abs_vx), total_step)
-    logger.add_scalar('eval/vy', sum(abs_vy)/len(abs_vy), total_step)
-    logger.add_scalar('eval/v', sum(abs_v)/len(abs_v), total_step)
-    logger.add_scalar('eval/ade', sum(ade)/len(ade), total_step)
-    logger.add_scalar('eval/final_displacement', sum(final_displacement)/len(final_displacement), total_step)
+    if len(abs_x) > 0: logger.add_scalar('eval/x', sum(abs_x)/len(abs_x), total_step)
+    if len(abs_y) > 0: logger.add_scalar('eval/y', sum(abs_y)/len(abs_y), total_step)
+    if len(abs_vx) > 0: logger.add_scalar('eval/vx', sum(abs_vx)/len(abs_vx), total_step)
+    if len(abs_vy) > 0: logger.add_scalar('eval/vy', sum(abs_vy)/len(abs_vy), total_step)
+    if len(abs_v) > 0: logger.add_scalar('eval/v', sum(abs_v)/len(abs_v), total_step)
+    if len(ade) > 0: logger.add_scalar('eval/ade', sum(ade)/len(ade), total_step)
+    if len(final_displacement) > 0: logger.add_scalar('eval/final_displacement', sum(final_displacement)/len(final_displacement), total_step)
     model.train()
     
 total_step = 0
 print('Start to train ...')
-"""
-for j in range(1000):
-    eval_error(j)
-    draw_traj(j)
-"""
+
+def gaussian_probability(sigma, mu, target):
+    """Returns the probability of `data` given MoG parameters `sigma` and `mu`.
+    
+    Arguments:
+        sigma (BxGxO): The standard deviation of the Gaussians. B is the batch
+            size, G is the number of Gaussians, and O is the number of
+            dimensions per Gaussian.
+        mu (BxGxO): The means of the Gaussians. B is the batch size, G is the
+            number of Gaussians, and O is the number of dimensions per Gaussian.
+        data (BxI): A batch of data. B is the batch size and I is the number of
+            input dimensions.
+    Returns:
+        probabilities (BxG): The probability of each point in the probability
+            of the distribution in the corresponding sigma/mu index.
+    """
+    #data = torch.randn(32, 20, 7)
+    data = target.unsqueeze(1)
+    ONEOVERSQRT2PI = 1.0 / math.sqrt(2*math.pi)
+    ret = ONEOVERSQRT2PI * torch.exp(-0.5 * ((data - mu) / sigma)**2) / sigma
+    return torch.prod(ret, 2)
+
+
+def mdn_loss(pi, sigma, mu, target):
+    """Calculates the error, given the MoG parameters and the target
+    The loss is the negative log likelihood of the data given the MoG
+    parameters.
+    """
+    prob = pi * gaussian_probability(sigma, mu, target)
+    nll = -torch.log(torch.sum(prob, dim=1))
+    return torch.mean(nll)
+
+
+def sample(pi, sigma, mu):
+    """Draw samples from a MoG.
+    """
+    categorical = Categorical(pi)
+    pis = list(categorical.sample().data)
+    sample = Variable(sigma.data.new(sigma.size(0), sigma.size(2)).normal_())
+    for i, idx in enumerate(pis):
+        sample[i] = sample[i].mul(sigma[i,idx]).add(mu[i,idx])
+    return sample
+
+
 for index, batch in enumerate(dataloader):
     total_step += 1
     if opt.test_mode:
@@ -266,38 +320,22 @@ for index, batch in enumerate(dataloader):
     batch['xy'] = batch['xy'].to(device)
     batch['vxy'] = batch['vxy'].to(device)/opt.max_speed
     
-    output, mu, logvar = model(batch['img'])
-    if total_step % 100  == 0:
-        print('mu', mu)
-        print('logvar', logvar)
-        print()
-    output = output.view(opt.batch_size, 10, 4)
-    xy = output[:,:,0:2]
-    vxy = output[:,:,2:4]
-
-    optimizer.zero_grad()
-    loss_xy = 0.8*0.5*criterion(opt.max_dist*xy, opt.max_dist*batch['xy'])
-    #loss_x = criterion(opt.max_dist*xy[:,0], opt.max_dist*batch['xy'][:,0])
-    #loss_y = criterion(opt.max_dist*xy[:,1], opt.max_dist*batch['xy'][:,1])
-    #loss_xy = loss_x + 10*loss_y
-    loss_vxy = 0.5*criterion(vxy, batch['vxy'])
-    KLD = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
-    loss = loss_xy + opt.gamma*loss_vxy + opt.gamma2*KLD
-
+    pi, sigma, mu = model(batch['img'])
+    model.zero_grad()
+    loss = mdn_loss(pi, sigma, mu, torch.cat((batch['xy'],batch['vxy']), dim=2).view(-1, 40))
+    if torch.isnan(loss): continue
     loss.backward()
     torch.nn.utils.clip_grad_value_(model.parameters(), clip_value=1)
     optimizer.step()
-    
-    logger.add_scalar('train/loss_xy', loss_xy.item(), total_step)
-    #logger.add_scalar('train/loss_x', loss_x.item(), total_step)
-    #logger.add_scalar('train/loss_y', loss_y.item(), total_step)
-    logger.add_scalar('train/loss_vxy', loss_vxy.item(), total_step)
-    logger.add_scalar('train/loss_kld', KLD.item(), total_step)
     logger.add_scalar('train/loss', loss.item(), total_step)
     
+    """
     if total_step % opt.test_interval == 0:
-        eval_error(total_step)
-        draw_traj(total_step)
-    
+        try:
+            eval_error(total_step)
+            draw_traj(total_step)
+        except:
+            pass
+    """
     if total_step % opt.checkpoint_interval == 0:
         torch.save(model.state_dict(), 'result/saved_models/%s/model_%d.pth'%(opt.dataset_name, total_step))

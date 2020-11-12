@@ -5,13 +5,13 @@ from cv_bridge import CvBridge, CvBridgeError
 import argparse
 
 parser = argparse.ArgumentParser(description='Params')
-parser.add_argument('-d', '--data', type=int, default=1, help='data index')
-parser.add_argument('-b', '--bag', type=str, default="2020-07-11-17-50-49.bag", help='bag name')
+parser.add_argument('-d', '--data', type=int, default=3, help='data index')
+parser.add_argument('-b', '--bag', type=str, default="2020-10-10-16-58-22.bag", help='bag name')
 args = parser.parse_args()
 
-img_path = '/media/wang/DATASET/images'+str(args.data)+'/'
-gps_path = '/media/wang/DATASET/gps'+str(args.data)+'/'
-cmd_path = '/media/wang/DATASET/cmd'+str(args.data)+'/'
+img_path = '/media/wang/Data1/images'+str(args.data)+'/'
+gps_path = '/media/wang/Data1/gps'+str(args.data)+'/'
+cmd_path = '/media/wang/Data1/cmd'+str(args.data)+'/'
 
 class ImageCreator():
     def __init__(self):
@@ -21,7 +21,7 @@ class ImageCreator():
         
         self.gps_file = open(gps_path+'gps.txt', 'w')
         self.cmd_file = open(cmd_path+'cmd.txt', 'w')
-        with rosbag.Bag('/media/wang/DATASET/'+args.bag, 'r') as bag:
+        with rosbag.Bag('/media/wang/Data1/'+args.bag, 'r') as bag:
             for topic,msg,t in bag.read_messages():
                 if topic == "/mynteye/left/image_color":
                     try:

@@ -3,6 +3,10 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import torch.optim as optim
+from torch.autograd import Variable
+from torch.distributions import Categorical
+import math
 
 def weights_init(m):
     if isinstance(m, nn.Conv2d):
@@ -15,205 +19,12 @@ def weights_init(m):
         nn.init.kaiming_uniform_(m.weight, a=0, mode='fan_in', nonlinearity='leaky_relu')
         nn.init.constant_(m.bias, 0.01)
         
-class BasicConv(nn.Module):
-    def __init__(self, in_planes, out_planes, kernel_size, stride=1, padding=0, dilation=1, groups=1, relu=True, bn=True, bias=False):
-        super(BasicConv, self).__init__()
-        self.out_channels = out_planes
-        self.conv = nn.Conv2d(in_planes, out_planes, kernel_size=kernel_size, stride=stride, padding=padding, dilation=dilation, groups=groups, bias=bias)
-        self.bn = nn.BatchNorm2d(out_planes,eps=1e-5, momentum=0.01, affine=True) if bn else None
-        self.relu = nn.LeakyReLU() if relu else None
-
-    def forward(self, x):
-        x = self.conv(x)
-        if self.bn is not None:
-            x = self.bn(x)
-        if self.relu is not None:
-            x = self.relu(x)
-        return x
-
-class Flatten(nn.Module):
-    def forward(self, x):
-        return x.view(x.size(0), -1)
-
-class ChannelGate(nn.Module):
-    def __init__(self, gate_channels, reduction_ratio=16, pool_types=['avg', 'max']):
-        super(ChannelGate, self).__init__()
-        self.gate_channels = gate_channels
-        self.mlp = nn.Sequential(
-            Flatten(),
-            nn.Linear(gate_channels, gate_channels // reduction_ratio),
-            nn.LeakyReLU(),
-            nn.Linear(gate_channels // reduction_ratio, gate_channels)
-            )
-        self.pool_types = pool_types
-    def forward(self, x):
-        channel_att_sum = None
-        for pool_type in self.pool_types:
-            if pool_type=='avg':
-                avg_pool = F.avg_pool2d( x, (x.size(2), x.size(3)), stride=(x.size(2), x.size(3)))
-                channel_att_raw = self.mlp( avg_pool )
-            elif pool_type=='max':
-                max_pool = F.max_pool2d( x, (x.size(2), x.size(3)), stride=(x.size(2), x.size(3)))
-                channel_att_raw = self.mlp( max_pool )
-            elif pool_type=='lp':
-                lp_pool = F.lp_pool2d( x, 2, (x.size(2), x.size(3)), stride=(x.size(2), x.size(3)))
-                channel_att_raw = self.mlp( lp_pool )
-            elif pool_type=='lse':
-                # LSE pool only
-                lse_pool = logsumexp_2d(x)
-                channel_att_raw = self.mlp( lse_pool )
-
-            if channel_att_sum is None:
-                channel_att_sum = channel_att_raw
-            else:
-                channel_att_sum = channel_att_sum + channel_att_raw
-
-        scale = torch.sigmoid( channel_att_sum ).unsqueeze(2).unsqueeze(3).expand_as(x)
-        return x * scale
-
-def logsumexp_2d(tensor):
-    tensor_flatten = tensor.view(tensor.size(0), tensor.size(1), -1)
-    s, _ = torch.max(tensor_flatten, dim=2, keepdim=True)
-    outputs = s + (tensor_flatten - s).exp().sum(dim=2, keepdim=True).log()
-    return outputs
-
-class ChannelPool(nn.Module):
-    def forward(self, x):
-        return torch.cat( (torch.max(x,1)[0].unsqueeze(1), torch.mean(x,1).unsqueeze(1)), dim=1 )
-
-class SpatialGate(nn.Module):
-    def __init__(self):
-        super(SpatialGate, self).__init__()
-        kernel_size = 7
-        self.compress = ChannelPool()
-        self.spatial = BasicConv(2, 1, kernel_size, stride=1, padding=(kernel_size-1) // 2, relu=False)
-    def forward(self, x):
-        x_compress = self.compress(x)
-        x_out = self.spatial(x_compress)
-        scale = torch.sigmoid(x_out) # broadcasting
-        return x * scale
-
-class CBAM(nn.Module):
-    def __init__(self, gate_channels, reduction_ratio=16, pool_types=['avg', 'max'], no_spatial=False):
-        super(CBAM, self).__init__()
-        self.ChannelGate = ChannelGate(gate_channels, reduction_ratio, pool_types)
-        self.no_spatial=no_spatial
-        if not no_spatial:
-            self.SpatialGate = SpatialGate()
-    def forward(self, x):
-        x_out = self.ChannelGate(x)
-        if not self.no_spatial:
-            x_out = self.SpatialGate(x_out)
-        return x_out
-
-
-def conv3x3(in_planes, out_planes, stride=1):
-    "3x3 convolution with padding"
-    return nn.Conv2d(in_planes, out_planes, kernel_size=3, stride=stride,
-                     padding=1, bias=False)
-
-class BasicBlock(nn.Module):
-    expansion = 1
-
-    def __init__(self, inplanes, planes, stride=1, downsample=None):
-        super(BasicBlock, self).__init__()
-        self.conv1 = conv3x3(inplanes, planes, stride)
-        self.bn1 = nn.BatchNorm2d(planes)
-        self.relu = nn.LeakyReLU(inplace=True)
-        self.conv2 = conv3x3(planes, planes)
-        self.bn2 = nn.BatchNorm2d(planes)
-        self.downsample = downsample
-        self.stride = stride
-
-        self.cbam = CBAM(planes, 16)
-
-    def forward(self, x):
-        residual = x
-
-        out = self.conv1(x)
-        out = self.bn1(out)
-        out = self.relu(out)
-
-        out = self.conv2(out)
-        out = self.bn2(out)
-
-        if self.downsample is not None:
-            residual = self.downsample(x)
-
-        out = self.cbam(out)
-
-        out += residual
-        out = self.relu(out)
-
-        return out
-
-class ResNet(nn.Module):
-    def __init__(self, layers):
-        self.inplanes = 64
-        super(ResNet, self).__init__()
-
-        self.conv1 = nn.Conv2d(1, 64, kernel_size=3, stride=1, padding=1, bias=False)
-        self.bn1 = nn.BatchNorm2d(64)
-
-        self.layer1 = self._make_layer(64,  layers[0], stride=5)
-        self.layer2 = self._make_layer(128, layers[1], stride=5)
-        self.layer3 = self._make_layer(256, layers[2], stride=3)
-        self.layer4 = self._make_layer(256, layers[3], stride=3)
-
-        #self.fc = nn.Linear(512 * block.expansion, num_classes)
-
-        #init.kaiming_normal(self.fc.weight)
-        for key in self.state_dict():
-            if key.split('.')[-1]=="weight":
-                if "conv" in key:
-                    nn.init.kaiming_normal_(self.state_dict()[key], mode='fan_out')
-                if "bn" in key:
-                    if "SpatialGate" in key:
-                        self.state_dict()[key][...] = 0
-                    else:
-                        self.state_dict()[key][...] = 1
-            elif key.split(".")[-1]=='bias':
-                self.state_dict()[key][...] = 0
-
-    def _make_layer(self, planes, blocks, stride=2):
-        downsample = None
-        if stride != 1 or self.inplanes != planes * BasicBlock.expansion:
-            downsample = nn.Sequential(
-                nn.Conv2d(self.inplanes, planes * BasicBlock.expansion,
-                          kernel_size=1, stride=stride, bias=False),
-                nn.BatchNorm2d(planes * BasicBlock.expansion),
-            )
-
-        layers = []
-        layers.append(BasicBlock(self.inplanes, planes, stride, downsample))
-        self.inplanes = planes * BasicBlock.expansion
-        for i in range(1, blocks):
-            layers.append(BasicBlock(self.inplanes, planes))
-
-        return nn.Sequential(*layers)
-
-    def forward(self, x):
-        x = self.conv1(x)
-        x = self.bn1(x)
-        x = F.leaky_relu(x)
-        x = self.layer1(x)
-        x = self.layer2(x)
-        x = self.layer3(x)
-        x = self.layer4(x)
-        x = x.view(x.size(0), -1)
-        return x
-
-def ResidualNet():
-    model = ResNet([2, 2, 2, 2])
-    return model
-
 class ModelGRU(nn.Module):
     def __init__(self, hidden_dim=256):
         super(ModelGRU, self).__init__()
         self.cnn_feature_dim = hidden_dim
         self.rnn_hidden_dim = hidden_dim
         self.cnn = CNN(input_dim=1, out_dim=self.cnn_feature_dim)
-        #self.cnn = ResidualNet()
         self.gru = nn.GRU(
             input_size = self.cnn_feature_dim, 
             hidden_size = self.rnn_hidden_dim, 
@@ -242,7 +53,6 @@ class ModelGRU2(nn.Module):
         self.cnn_feature_dim = hidden_dim
         self.rnn_hidden_dim = hidden_dim
         self.cnn = CNN(input_dim=1, out_dim=self.cnn_feature_dim)
-        #self.cnn = ResidualNet()
         self.gru = nn.GRU(
             input_size = self.cnn_feature_dim, 
             hidden_size = self.rnn_hidden_dim, 
@@ -407,38 +217,6 @@ class CNNLSTM(nn.Module):
         x = F.leaky_relu(x[:, -1, :])
         x = self.mlp(x)
         return x
-
-class MDN(nn.Module):
-    def __init__(self, input_dim=256, n_hidden=256, output_dim=10, n_gaussians=3):
-        super(MDN, self).__init__()
-        self.z_h = nn.Sequential(
-            nn.Linear(input_dim, n_hidden),
-            nn.Tanh(),
-            nn.Linear(n_hidden, n_hidden),
-            nn.Tanh(),
-        )
-        self.z_pi = nn.Sequential(
-            nn.Linear(n_hidden, n_hidden),
-            nn.Tanh(),
-            nn.Linear(n_hidden, n_gaussians*output_dim),
-        )
-        self.z_mu = nn.Sequential(
-            nn.Linear(n_hidden, n_hidden),
-            nn.Tanh(),
-            nn.Linear(n_hidden, n_gaussians*output_dim),
-        )
-        self.z_sigma = nn.Sequential(
-            nn.Linear(n_hidden, n_hidden),
-            nn.Tanh(),
-            nn.Linear(n_hidden, n_gaussians*output_dim),
-        )
-    
-    def forward(self, x):
-        z_h = self.z_h(x)
-        pi = F.softmax(self.z_pi(z_h), -1)
-        mu = self.z_mu(z_h)
-        sigma = torch.exp(self.z_sigma(z_h))
-        return pi, mu, sigma
     
 class GRUMDN(nn.Module):
     def __init__(self, hidden_dim=256, input_dim=1, k=3):
@@ -450,11 +228,11 @@ class GRUMDN(nn.Module):
         self.gru = nn.GRU(
             input_size = self.cnn_feature_dim, 
             hidden_size = self.rnn_hidden_dim, 
-            num_layers = 3,
+            num_layers = 2,
             batch_first=True,
-            dropout=0.2
+            #dropout=0.2
             )
-        self.mdn = MDN(input_dim=256, n_hidden=256, output_dim=10*4, n_gaussians=3)
+        self.mdn = MDN(in_features=self.rnn_hidden_dim, out_features=4*10, num_gaussians=10)
 
     def forward(self, x):
         batch_size, timesteps, C, H, W = x.size()
@@ -464,7 +242,8 @@ class GRUMDN(nn.Module):
         
         x = x.view(batch_size, timesteps, -1)
         x, _ = self.gru(x)
-        x = F.leaky_relu(x[:, -1, :])
+        x = torch.tanh(x[:, -1, :])
+        #x = F.leaky_relu(x[:, -1, :])
         pi, mu, sigma = self.mdn(x)
         return pi, mu, sigma
 
@@ -487,7 +266,7 @@ class VAELSTM(nn.Module):
         self.gru = nn.GRU(
             input_size = self.cnn_feature_dim, 
             hidden_size = self.rnn_hidden_dim, 
-            num_layers = 2,
+            num_layers = 3,
             batch_first=True,
             dropout=0.2
             )
@@ -514,7 +293,91 @@ class VAELSTM(nn.Module):
         else: x = self.reparameterize(mu, logvar)
         x = self.mlp(x)
         return x, mu, logvar
+
+
+class MDN(nn.Module):
+    """A mixture density network layer
+    The input maps to the parameters of a MoG probability distribution, where
+    each Gaussian has O dimensions and diagonal covariance.
+    Arguments:
+        in_features (int): the number of dimensions in the input
+        out_features (int): the number of dimensions in the output
+        num_gaussians (int): the number of Gaussians per output dimensions
+    Input:
+        minibatch (BxD): B is the batch size and D is the number of input
+            dimensions.
+    Output:
+        (pi, sigma, mu) (BxG, BxGxO, BxGxO): B is the batch size, G is the
+            number of Gaussians, and O is the number of dimensions for each
+            Gaussian. Pi is a multinomial distribution of the Gaussians. Sigma
+            is the standard deviation of each Gaussian. Mu is the mean of each
+            Gaussian.
+    """
+    def __init__(self, in_features, out_features, num_gaussians):
+        super(MDN, self).__init__()
+        self.in_features = in_features
+        self.out_features = out_features
+        self.num_gaussians = num_gaussians
+        self.pi = nn.Sequential(
+            nn.Linear(in_features, num_gaussians),
+            nn.Softmax(dim=1)
+        )
+        self.sigma = nn.Linear(in_features, out_features*num_gaussians)
+        self.mu = nn.Linear(in_features, out_features*num_gaussians)
+
+    def forward(self, minibatch):
+        pi = self.pi(minibatch)
+        sigma = torch.exp(self.sigma(minibatch))
+        sigma = sigma.view(-1, self.num_gaussians, self.out_features)
+        mu = self.mu(minibatch)
+        mu = mu.view(-1, self.num_gaussians, self.out_features)
+        return pi, sigma, mu
+
+
+def gaussian_probability(sigma, mu, target):
+    """Returns the probability of `data` given MoG parameters `sigma` and `mu`.
     
+    Arguments:
+        sigma (BxGxO): The standard deviation of the Gaussians. B is the batch
+            size, G is the number of Gaussians, and O is the number of
+            dimensions per Gaussian.
+        mu (BxGxO): The means of the Gaussians. B is the batch size, G is the
+            number of Gaussians, and O is the number of dimensions per Gaussian.
+        data (BxI): A batch of data. B is the batch size and I is the number of
+            input dimensions.
+    Returns:
+        probabilities (BxG): The probability of each point in the probability
+            of the distribution in the corresponding sigma/mu index.
+    """
+    #data = torch.randn(32, 20, 7)
+    data = target.unsqueeze(1)
+    print(data.shape , mu.shape)
+    ONEOVERSQRT2PI = 1.0 / math.sqrt(2*math.pi)
+    ret = ONEOVERSQRT2PI * torch.exp(-0.5 * ((data - mu) / sigma)**2) / sigma
+    return torch.prod(ret, 2)
+
+
+def mdn_loss(pi, sigma, mu, target):
+    """Calculates the error, given the MoG parameters and the target
+    The loss is the negative log likelihood of the data given the MoG
+    parameters.
+    """
+    prob = pi * gaussian_probability(sigma, mu, target)
+    nll = -torch.log(torch.sum(prob, dim=1))
+    return torch.mean(nll)
+
+
+def sample(pi, sigma, mu):
+    """Draw samples from a MoG.
+    """
+    categorical = Categorical(pi)
+    pis = list(categorical.sample().data)
+    sample = Variable(sigma.data.new(sigma.size(0), sigma.size(2)).normal_())
+    for i, idx in enumerate(pis):
+        sample[i] = sample[i].mul(sigma[i,idx]).add(mu[i,idx])
+    return sample
+
+
 class ModelGMM(nn.Module):
     def __init__(self, k=10, hidden_dim=256):
         super(ModelGMM, self).__init__()
@@ -899,3 +762,195 @@ class ModelVAE(nn.Module):
         x = self.reparameterize(mu, logvar)
         x = self.mlp(x, t, v0)
         return x, mu, logvar
+    
+class BasicConv(nn.Module):
+    def __init__(self, in_planes, out_planes, kernel_size, stride=1, padding=0, dilation=1, groups=1, relu=True, bn=True, bias=False):
+        super(BasicConv, self).__init__()
+        self.out_channels = out_planes
+        self.conv = nn.Conv2d(in_planes, out_planes, kernel_size=kernel_size, stride=stride, padding=padding, dilation=dilation, groups=groups, bias=bias)
+        self.bn = nn.BatchNorm2d(out_planes,eps=1e-5, momentum=0.01, affine=True) if bn else None
+        self.relu = nn.LeakyReLU() if relu else None
+
+    def forward(self, x):
+        x = self.conv(x)
+        if self.bn is not None:
+            x = self.bn(x)
+        if self.relu is not None:
+            x = self.relu(x)
+        return x
+
+class Flatten(nn.Module):
+    def forward(self, x):
+        return x.view(x.size(0), -1)
+
+class ChannelGate(nn.Module):
+    def __init__(self, gate_channels, reduction_ratio=16, pool_types=['avg', 'max']):
+        super(ChannelGate, self).__init__()
+        self.gate_channels = gate_channels
+        self.mlp = nn.Sequential(
+            Flatten(),
+            nn.Linear(gate_channels, gate_channels // reduction_ratio),
+            nn.LeakyReLU(),
+            nn.Linear(gate_channels // reduction_ratio, gate_channels)
+            )
+        self.pool_types = pool_types
+    def forward(self, x):
+        channel_att_sum = None
+        for pool_type in self.pool_types:
+            if pool_type=='avg':
+                avg_pool = F.avg_pool2d( x, (x.size(2), x.size(3)), stride=(x.size(2), x.size(3)))
+                channel_att_raw = self.mlp( avg_pool )
+            elif pool_type=='max':
+                max_pool = F.max_pool2d( x, (x.size(2), x.size(3)), stride=(x.size(2), x.size(3)))
+                channel_att_raw = self.mlp( max_pool )
+            elif pool_type=='lp':
+                lp_pool = F.lp_pool2d( x, 2, (x.size(2), x.size(3)), stride=(x.size(2), x.size(3)))
+                channel_att_raw = self.mlp( lp_pool )
+            elif pool_type=='lse':
+                # LSE pool only
+                lse_pool = logsumexp_2d(x)
+                channel_att_raw = self.mlp( lse_pool )
+
+            if channel_att_sum is None:
+                channel_att_sum = channel_att_raw
+            else:
+                channel_att_sum = channel_att_sum + channel_att_raw
+
+        scale = torch.sigmoid( channel_att_sum ).unsqueeze(2).unsqueeze(3).expand_as(x)
+        return x * scale
+
+def logsumexp_2d(tensor):
+    tensor_flatten = tensor.view(tensor.size(0), tensor.size(1), -1)
+    s, _ = torch.max(tensor_flatten, dim=2, keepdim=True)
+    outputs = s + (tensor_flatten - s).exp().sum(dim=2, keepdim=True).log()
+    return outputs
+
+class ChannelPool(nn.Module):
+    def forward(self, x):
+        return torch.cat( (torch.max(x,1)[0].unsqueeze(1), torch.mean(x,1).unsqueeze(1)), dim=1 )
+
+class SpatialGate(nn.Module):
+    def __init__(self):
+        super(SpatialGate, self).__init__()
+        kernel_size = 7
+        self.compress = ChannelPool()
+        self.spatial = BasicConv(2, 1, kernel_size, stride=1, padding=(kernel_size-1) // 2, relu=False)
+    def forward(self, x):
+        x_compress = self.compress(x)
+        x_out = self.spatial(x_compress)
+        scale = torch.sigmoid(x_out) # broadcasting
+        return x * scale
+
+class CBAM(nn.Module):
+    def __init__(self, gate_channels, reduction_ratio=16, pool_types=['avg', 'max'], no_spatial=False):
+        super(CBAM, self).__init__()
+        self.ChannelGate = ChannelGate(gate_channels, reduction_ratio, pool_types)
+        self.no_spatial=no_spatial
+        if not no_spatial:
+            self.SpatialGate = SpatialGate()
+    def forward(self, x):
+        x_out = self.ChannelGate(x)
+        if not self.no_spatial:
+            x_out = self.SpatialGate(x_out)
+        return x_out
+
+
+def conv3x3(in_planes, out_planes, stride=1):
+    "3x3 convolution with padding"
+    return nn.Conv2d(in_planes, out_planes, kernel_size=3, stride=stride,
+                     padding=1, bias=False)
+
+class BasicBlock(nn.Module):
+    expansion = 1
+
+    def __init__(self, inplanes, planes, stride=1, downsample=None):
+        super(BasicBlock, self).__init__()
+        self.conv1 = conv3x3(inplanes, planes, stride)
+        self.bn1 = nn.BatchNorm2d(planes)
+        self.relu = nn.LeakyReLU(inplace=True)
+        self.conv2 = conv3x3(planes, planes)
+        self.bn2 = nn.BatchNorm2d(planes)
+        self.downsample = downsample
+        self.stride = stride
+
+        self.cbam = CBAM(planes, 16)
+
+    def forward(self, x):
+        residual = x
+
+        out = self.conv1(x)
+        out = self.bn1(out)
+        out = self.relu(out)
+
+        out = self.conv2(out)
+        out = self.bn2(out)
+
+        if self.downsample is not None:
+            residual = self.downsample(x)
+
+        out = self.cbam(out)
+
+        out += residual
+        out = self.relu(out)
+
+        return out
+
+class ResNet(nn.Module):
+    def __init__(self, layers):
+        self.inplanes = 64
+        super(ResNet, self).__init__()
+
+        self.conv1 = nn.Conv2d(1, 64, kernel_size=3, stride=1, padding=1, bias=False)
+        self.bn1 = nn.BatchNorm2d(64)
+
+        self.layer1 = self._make_layer(64,  layers[0], stride=5)
+        self.layer2 = self._make_layer(128, layers[1], stride=5)
+        self.layer3 = self._make_layer(256, layers[2], stride=3)
+        self.layer4 = self._make_layer(256, layers[3], stride=3)
+
+        #self.fc = nn.Linear(512 * block.expansion, num_classes)
+
+        #init.kaiming_normal(self.fc.weight)
+        for key in self.state_dict():
+            if key.split('.')[-1]=="weight":
+                if "conv" in key:
+                    nn.init.kaiming_normal_(self.state_dict()[key], mode='fan_out')
+                if "bn" in key:
+                    if "SpatialGate" in key:
+                        self.state_dict()[key][...] = 0
+                    else:
+                        self.state_dict()[key][...] = 1
+            elif key.split(".")[-1]=='bias':
+                self.state_dict()[key][...] = 0
+
+    def _make_layer(self, planes, blocks, stride=2):
+        downsample = None
+        if stride != 1 or self.inplanes != planes * BasicBlock.expansion:
+            downsample = nn.Sequential(
+                nn.Conv2d(self.inplanes, planes * BasicBlock.expansion,
+                          kernel_size=1, stride=stride, bias=False),
+                nn.BatchNorm2d(planes * BasicBlock.expansion),
+            )
+
+        layers = []
+        layers.append(BasicBlock(self.inplanes, planes, stride, downsample))
+        self.inplanes = planes * BasicBlock.expansion
+        for i in range(1, blocks):
+            layers.append(BasicBlock(self.inplanes, planes))
+
+        return nn.Sequential(*layers)
+
+    def forward(self, x):
+        x = self.conv1(x)
+        x = self.bn1(x)
+        x = F.leaky_relu(x)
+        x = self.layer1(x)
+        x = self.layer2(x)
+        x = self.layer3(x)
+        x = self.layer4(x)
+        x = x.view(x.size(0), -1)
+        return x
+
+def ResidualNet():
+    model = ResNet([2, 2, 2, 2])
+    return model

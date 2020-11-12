@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 import sys
 from os.path import join, dirname
-sys.path.insert(0, join(dirname(__file__), '..'))
+sys.path.insert(0, join(dirname(__file__), '../..'))
 
 import simulator
 simulator.load('/home/wang/CARLA_0.9.9.4')
@@ -102,7 +102,7 @@ def main():
     client.set_timeout(config['timeout'])
     
     #world = client.get_world()
-    world = client.load_world('Town01')
+    world = client.load_world('Town10')
 
     weather = carla.WeatherParameters(
         cloudiness=random.randint(0,10),
