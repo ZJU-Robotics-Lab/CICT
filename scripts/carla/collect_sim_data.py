@@ -108,15 +108,15 @@ def main():
     
     #world = client.get_world()
     world = client.load_world('Town01')
-
+    """
     weather = carla.WeatherParameters(
         cloudiness=random.randint(0,50),
         precipitation=0,
         sun_altitude_angle=random.randint(40,90)
     )
-    
-    #world.set_weather(carla.WeatherParameters.ClearNoon)
     set_weather(world, weather)
+    """
+    world.set_weather(carla.WeatherParameters.ClearNoon)
     
     blueprint = world.get_blueprint_library()
     world_map = world.get_map()

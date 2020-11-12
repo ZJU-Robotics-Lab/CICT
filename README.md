@@ -9,6 +9,17 @@ This repository is for the robot car development, including main program, sensor
 * GPS: [千寻 D300-GNSS](https://mall.qxwz.com/market/products/details?name=ouabiwv7762375598)
 * IMU： [Xsens MTi-300-2A8G4](https://www.mouser.com/ProductDetail/Xsens/MTI-300-2A8G4?qs=sGAEpiMZZMutXGli8Ay4kNSxHzx9HmD09sFWWfMc%252BdM%3D)
 
+# Learning Module
+* Learning models
+  * Driving Intention Module: learning/models.py GeneratorUNet and Discriminator
+  * Trajectory Generation Module: learning/path_model.py ModelGRU
+* Train model
+```bash
+python scripts/carla/train_path.py
+python scripts/carla/train_GAN.py
+```
+
+
 # Install
 ```bash
 cd scripts
@@ -16,11 +27,6 @@ bash install.sh
 ```
 
 # Features
-* Train model
-```bash
-python scripts/dataset/train_path.py
-python scripts/carla/train_GAN.py
-```
 
 * Camera image reading in python with pybind11
 ```bash
@@ -56,8 +62,6 @@ bash scripts/real/get_permission.sh
 cd device/controller
 python xbox.py
 ```
-
-
 
 # ROS Wrapper
 #### Build

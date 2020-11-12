@@ -13,7 +13,6 @@ import torchvision.transforms as transforms
 import copy
 from scipy.special import comb
 np.set_printoptions(suppress=True, precision=4, linewidth=65535)
-import matplotlib.pyplot as plt
 
 def expand_control_points(point_array):
     point_array_expand = copy.deepcopy(point_array)
