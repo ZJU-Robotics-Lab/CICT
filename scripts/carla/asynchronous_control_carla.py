@@ -262,8 +262,7 @@ def get_costmap_stack():
         if t0 - ts > 5:
             del global_trans_costmap_dict[ts]
     return trans_costmap_stack
-        
-    
+
 def get_traj(plan_time):
     global global_v0, draw_cost_map, state0, global_vehicle
     state0 = cu.getActorState('odom', plan_time, global_vehicle)
@@ -312,6 +311,8 @@ def get_traj(plan_time):
     ax = ax.data.cpu().numpy()
     ay = ay.data.cpu().numpy()
     a = a.data.cpu().numpy()
+    #var = np.sqrt(np.exp(log_var))
+    
     #state0 = cu.getActorState('odom', plan_time, global_vehicle)
     #time.sleep(0.1)
     trajectory = {'time':plan_time, 'x':x, 'y':y, 'vx':vx, 'vy':vy, 'ax':ax, 'ay':ay, 'a':a}
@@ -351,7 +352,6 @@ def make_plan():
         if not start_control:
             start_control = True
             
-
 def get_transform(transform, org_transform):
     x = transform.location.x
     y = transform.location.y
