@@ -13,6 +13,7 @@ import torchvision.transforms as transforms
 import copy
 from scipy.special import comb
 np.set_printoptions(suppress=True, precision=4, linewidth=65535)
+import matplotlib.pyplot as plt
 
 def expand_control_points(point_array):
     point_array_expand = copy.deepcopy(point_array)
@@ -667,12 +668,16 @@ class CARLADataset(Dataset):
         while True:
             try:
                 file_name = random.sample(self.files_dict[data_index], 1)[0]
+                fake_file_name = random.sample(self.files_dict[data_index], 1)[0]
                 # img
                 img_path = self.dataset_path + str(data_index)+'/img/'+file_name+'.png'
                 img = Image.open(img_path).convert("RGB")
                 # nav
                 nav_path = self.dataset_path + str(data_index)+'/nav/'+file_name+'.png'
                 nav = Image.open(nav_path).convert("RGB")
+
+                fake_nav_path = self.dataset_path + str(data_index)+'/nav/'+fake_file_name+'.png'
+                fake_nav = Image.open(fake_nav_path).convert("RGB")
                 # label
                 label_path = self.dataset_path + str(data_index)+'/pm/'+file_name+'.png'
                 label = Image.open(label_path).convert('L')
@@ -685,15 +690,17 @@ class CARLADataset(Dataset):
                 
                 img = self.img_transforms(img)
                 nav = self.nav_transforms(nav)
+                fake_nav = self.nav_transforms(fake_nav)
                 label = self.label_transforms(label)
                 break
             except:
                 pass
         if not self.eval_mode:
             input_img = torch.cat((img, nav), 0)
-            return {'A': input_img, 'B': label}
+            fake_input_img = torch.cat((img, fake_nav), 0)
+            return {'A': input_img, 'B': label, 'fake_nav_with_img':fake_input_img}
         else:
-            return {'A1': img, 'A2': nav, 'B': label, 'file_name':file_name}
+            return {'A1': img, 'A2': nav, 'fake_nav':fake_nav, 'B': label, 'file_name':file_name}
 
     def __len__(self):
         return 100000000000
