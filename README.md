@@ -1,4 +1,7 @@
 # RoBoCar
+[![arXiv](https://img.shields.io/badge/arXiv-2010.10393-B31B1B.svg)](https://arxiv.org/abs/2010.10393)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 This repository is for the robot car development, including main program, sensors test scripts, auto install scripts, helpful tools, etc.
 
 ![robocar](./doc/robocar.jpg)
@@ -9,7 +12,7 @@ This repository is for the robot car development, including main program, sensor
 * GPS: [千寻 D300-GNSS](https://mall.qxwz.com/market/products/details?name=ouabiwv7762375598)
 * IMU： [Xsens MTi-300-2A8G4](https://www.mouser.com/ProductDetail/Xsens/MTI-300-2A8G4?qs=sGAEpiMZZMutXGli8Ay4kNSxHzx9HmD09sFWWfMc%252BdM%3D)
 
-# Learning Module
+### Learning Module
 * Learning models
   * Driving Intention Module: learning/models.py GeneratorUNet and Discriminator
   * Trajectory Generation Module: learning/path_model.py ModelGRU
@@ -20,13 +23,13 @@ python scripts/carla/train_GAN.py
 ```
 
 
-# Install
+### Install
 ```bash
 cd scripts
 bash install.sh
 ```
 
-# Features
+### Features
 
 * Camera image reading in python with pybind11
 ```bash
@@ -63,7 +66,7 @@ cd device/controller
 python xbox.py
 ```
 
-# ROS Wrapper
+### ROS Wrapper
 #### Build
 ```bash
 cd ROS
@@ -96,19 +99,19 @@ bash run_collect.sh
 ```
 
 
-# Robot Parameter
+### Robot Parameter
 
 * Shaft length ： 688.008mm
 * Axle distance ：1448.555mm
 * Voltage : 48V
 
 
-# Video
+### Video
 
 [![video](./doc/video_link.png)](https://www.youtube.com/watch?v=J6K-gSU12j8&t=4s&ab_channel=ZJURoboticsLab)
 
 
-## Citation
+### Citation
 If you use our source code, please consider citing the following:
 ```bibtex
 @article{wang2020imitation,
