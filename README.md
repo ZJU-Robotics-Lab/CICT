@@ -1,15 +1,13 @@
-# RoBoCar
+# Continuous Intention and Continuous Trajectory
 [![arXiv](https://img.shields.io/badge/arXiv-2010.10393-B31B1B.svg)](https://arxiv.org/abs/2010.10393)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-
-This repository is for the robot car development, including main program, sensors test scripts, auto install scripts, helpful tools, etc.
 
 ![robocar](./doc/robocar.jpg)
 
 #### Sensors used:
 * LiDAR: [Velodyne VLP-16](https://www.velodynelidar.com/vlp-16.html)
 * Camera: [MYNT EYE D-1000-120](https://www.myntai.com/mynteye/depth)
-* GPS: [千寻 D300-GNSS](https://mall.qxwz.com/market/products/details?name=ouabiwv7762375598)
+* GPS: [Qianxun D300-GNSS](https://mall.qxwz.com/market/products/details?name=ouabiwv7762375598)
 * IMU： [Xsens MTi-300-2A8G4](https://www.mouser.com/ProductDetail/Xsens/MTI-300-2A8G4?qs=sGAEpiMZZMutXGli8Ay4kNSxHzx9HmD09sFWWfMc%252BdM%3D)
 
 ### Learning Module
